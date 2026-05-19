@@ -39,6 +39,18 @@ class BuddyRequestModel {
   // 3. ยอมรับคำขอ (เปลี่ยน teamstatus เป็น Ready)
   static async acceptRequest(requestId) {
     const cleanId = parseInt(requestId, 10) || requestId;
+    
+    // 1. ดึงข้อมูลทีมบัดดี้เพื่อระบุตัวผู้ส่งและผู้รับ
+    const { data: team, error: getError } = await supabase
+      .from('buddyteam')
+      .select('*')
+      .eq('buddyteamid', cleanId)
+      .maybeSingle();
+
+    if (getError) throw getError;
+    if (!team) throw new Error("Buddy team request not found");
+
+    // 2. อัปเดตสถานะทีมเป็น Ready
     const { data, error } = await supabase
       .from('buddyteam')
       .update({ teamstatus: 'Ready' })
@@ -46,6 +58,26 @@ class BuddyRequestModel {
       .select();
 
     if (error) throw error;
+
+    // 3. อัปเดต buddy_team_id ในตาราง driver ของทั้ง leader และ follower
+    const { error: leaderError } = await supabase
+      .from('driver')
+      .update({ buddy_team_id: cleanId })
+      .eq('username', team.leaderid);
+
+    if (leaderError) {
+      console.error("Error setting leader buddy_team_id:", leaderError);
+    }
+
+    const { error: followerError } = await supabase
+      .from('driver')
+      .update({ buddy_team_id: cleanId })
+      .eq('username', team.followerid);
+
+    if (followerError) {
+      console.error("Error setting follower buddy_team_id:", followerError);
+    }
+
     return data;
   }
 
