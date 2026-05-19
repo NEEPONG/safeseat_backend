@@ -38,10 +38,11 @@ class BuddyRequestModel {
 
   // 3. ยอมรับคำขอ (เปลี่ยน teamstatus เป็น Ready)
   static async acceptRequest(requestId) {
+    const cleanId = parseInt(requestId, 10) || requestId;
     const { data, error } = await supabase
       .from('buddyteam')
       .update({ teamstatus: 'Ready' })
-      .eq('buddyteamid', requestId)
+      .eq('buddyteamid', cleanId)
       .select();
 
     if (error) throw error;
@@ -50,11 +51,12 @@ class BuddyRequestModel {
 
   // 4. ปฏิเสธหรือลบคำขอ
   static async removeRequest(requestId) {
+    const cleanId = parseInt(requestId, 10) || requestId;
     // ก่อนที่จะลบ buddyteam ให้เคลียร์ buddy_team_id ในตาราง driver ที่อ้างอิงถึงทีมนี้ก่อน
     const { error: updateError } = await supabase
       .from('driver')
       .update({ buddy_team_id: null })
-      .eq('buddy_team_id', requestId);
+      .eq('buddy_team_id', cleanId);
 
     if (updateError) {
       console.error("Error setting driver buddy_team_id to null:", updateError);
@@ -63,7 +65,7 @@ class BuddyRequestModel {
     const { error } = await supabase
       .from('buddyteam')
       .delete()
-      .eq('buddyteamid', requestId);
+      .eq('buddyteamid', cleanId);
 
     if (error) throw error;
     return { message: 'Deleted' };
