@@ -24,11 +24,11 @@ class BuddyRequestModel {
   // 2. ดึงคำขอที่ส่งมาถึงเรา (followerid = เรา)
   static async getPendingRequests(userId) {
     // const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-
+    
     const { data, error } = await supabase
       .from('buddyteam')
       .select('*, sender:leaderid(username, firstname, lastname, regisimagepath)')
-      .eq('followerid', userId)
+      .ilike('followerid', userId)
       .eq('teamstatus', 'pending');
     // .gt('teamdate', fiveMinutesAgo);
 
@@ -107,12 +107,10 @@ class BuddyRequestModel {
 
   // 5. ดูคู่หูปัจจุบัน
   static async getActiveBuddy(userId) {
-    const cleanUserId = userId;
-    const lowerUserId = userId.toLowerCase();
     const { data, error } = await supabase
       .from('buddyteam')
       .select('*, leader:leaderid(username, firstname, lastname, regisimagepath), follower:followerid(username, firstname, lastname, regisimagepath)')
-      .or(`leaderid.eq.${cleanUserId},followerid.eq.${cleanUserId},leaderid.eq.${lowerUserId},followerid.eq.${lowerUserId}`)
+      .or(`leaderid.ilike.${userId},followerid.ilike.${userId}`)
       .eq('teamstatus', 'Ready')
       .order('buddyteamid', { ascending: false })
       .limit(1)
