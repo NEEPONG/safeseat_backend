@@ -62,6 +62,16 @@ class BuddyRequestModel {
       console.error("Error setting driver buddy_team_id to null:", updateError);
     }
 
+    // เคลียร์ buddy_team_id ในตาราง requestbyuser ที่อ้างอิงถึงทีมนี้เพื่อหลีกเลี่ยง foreign key constraint violation
+    const { error: reqError } = await supabase
+      .from('requestbyuser')
+      .update({ buddy_team_id: null })
+      .eq('buddy_team_id', cleanId);
+
+    if (reqError) {
+      console.error("Error setting requestbyuser buddy_team_id to null:", reqError);
+    }
+
     const { error } = await supabase
       .from('buddyteam')
       .delete()
