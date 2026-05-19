@@ -84,7 +84,8 @@ class BuddyRequestModel {
   // 4. ปฏิเสธหรือลบคำขอ
   static async removeRequest(requestId) {
     const cleanId = parseInt(requestId, 10) || requestId;
-    // ก่อนที่จะลบ buddyteam ให้เคลียร์ buddy_team_id ในตาราง driver ที่อ้างอิงถึงทีมนี้ก่อน
+    
+    // 1. เคลียร์ buddy_team_id ในตาราง driver ให้เป็น null เพื่อปล่อยคนขับทั้งสองคนให้เป็นอิสระ
     const { error: updateError } = await supabase
       .from('driver')
       .update({ buddy_team_id: null })
@@ -94,11 +95,20 @@ class BuddyRequestModel {
       console.error("Error setting driver buddy_team_id to null:", updateError);
     }
 
-    // แทนที่จะลบแถวข้อมูลใน buddyteam ซึ่งจะติด NOT NULL constraint ในตารางอื่น (เช่น requestbyuser) ที่อ้างอิงอยู่
-    // ให้เปลี่ยนสถานะ teamstatus เป็น 'Cancelled' แทน เพื่อตัดการเชื่อมต่อและรักษาความสัมพันธ์ข้อมูลย้อนหลัง
+    // 2. ลบประวัติการเดินทางในตาราง requestbyuser ที่อ้างอิงถึงทีมนี้ออก เพื่อหลีกเลี่ยง foreign key constraint
+    const { error: reqError } = await supabase
+      .from('requestbyuser')
+      .delete()
+      .eq('buddy_team_id', cleanId);
+
+    if (reqError) {
+      console.error("Error deleting requestbyuser referencing this team:", reqError);
+    }
+
+    // 3. ลบแถวข้อมูลของทีมนี้ออกจากตาราง buddyteam ในฐานข้อมูลโดยสมบูรณ์
     const { error } = await supabase
       .from('buddyteam')
-      .update({ teamstatus: 'Cancelled' })
+      .delete()
       .eq('buddyteamid', cleanId);
 
     if (error) throw error;
