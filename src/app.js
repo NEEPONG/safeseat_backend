@@ -19,6 +19,10 @@ app.use('/api/wallets', walletRoutes);
 app.use('/api/buddy-team', buddyRequestRoutes);
 app.use('/api/driver-reports', driverReportRoutes);
 
+// Pub routes
+const pubRoute = require('./routes/pub/pub.route');
+app.use('/api/pub', pubRoute);
+
 // User auth fallback
 const userAuthRoute = require('./routes/user/auth.route');
 app.use('/api/user/auth', userAuthRoute);
