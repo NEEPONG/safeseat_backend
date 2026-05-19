@@ -83,11 +83,12 @@ class BuddyRequestModel {
 
   // 5. ดูคู่หูปัจจุบัน
   static async getActiveBuddy(userId) {
-    const cleanUserId = userId.toLowerCase();
+    const cleanUserId = userId;
+    const lowerUserId = userId.toLowerCase();
     const { data, error } = await supabase
       .from('buddyteam')
       .select('*, leader:leaderid(username, firstname, lastname, regisimagepath), follower:followerid(username, firstname, lastname, regisimagepath)')
-      .or(`leaderid.eq.${cleanUserId},followerid.eq.${cleanUserId}`)
+      .or(`leaderid.eq.${cleanUserId},followerid.eq.${cleanUserId},leaderid.eq.${lowerUserId},followerid.eq.${lowerUserId}`)
       .eq('teamstatus', 'Ready')
       .order('buddyteamid', { ascending: false })
       .limit(1)
