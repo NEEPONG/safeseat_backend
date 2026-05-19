@@ -6,12 +6,12 @@ class BuddyRequestModel {
     const { data, error } = await supabase
       .from('buddyteam')
       .insert([
-        { 
-          leaderid: senderId, 
-          followerid: receiverId, 
+        {
+          leaderid: senderId,
+          followerid: receiverId,
           teamstatus: 'pending',
           currentloclat: 0, // ใส่ค่าเริ่มต้นเนื่องจากเป็น NOT NULL
-          currentloclng: 0 
+          currentloclng: 0
         }
       ])
       .select()
@@ -28,9 +28,9 @@ class BuddyRequestModel {
     const { data, error } = await supabase
       .from('buddyteam')
       .select('*, sender:leaderid(username, firstname, lastname, regisimagepath)')
-      .eq('followerid', userId)
+      .ilike('followerid', userId)
       .eq('teamstatus', 'pending');
-      // .gt('teamdate', fiveMinutesAgo);
+    // .gt('teamdate', fiveMinutesAgo);
 
     if (error) throw error;
     return data;
@@ -39,6 +39,18 @@ class BuddyRequestModel {
   // 3. ยอมรับคำขอ (เปลี่ยน teamstatus เป็น Ready)
   static async acceptRequest(requestId) {
     const cleanId = parseInt(requestId, 10) || requestId;
+    
+    // 1. ดึงข้อมูลทีมบัดดี้เพื่อระบุตัวผู้ส่งและผู้รับ
+    const { data: team, error: getError } = await supabase
+      .from('buddyteam')
+      .select('*')
+      .eq('buddyteamid', cleanId)
+      .maybeSingle();
+
+    if (getError) throw getError;
+    if (!team) throw new Error("Buddy team request not found");
+
+    // 2. อัปเดตสถานะทีมเป็น Ready
     const { data, error } = await supabase
       .from('buddyteam')
       .update({ teamstatus: 'Ready' })
@@ -46,13 +58,34 @@ class BuddyRequestModel {
       .select();
 
     if (error) throw error;
+
+    // 3. อัปเดต buddy_team_id ในตาราง driver ของทั้ง leader และ follower
+    const { error: leaderError } = await supabase
+      .from('driver')
+      .update({ buddy_team_id: cleanId })
+      .eq('username', team.leaderid);
+
+    if (leaderError) {
+      console.error("Error setting leader buddy_team_id:", leaderError);
+    }
+
+    const { error: followerError } = await supabase
+      .from('driver')
+      .update({ buddy_team_id: cleanId })
+      .eq('username', team.followerid);
+
+    if (followerError) {
+      console.error("Error setting follower buddy_team_id:", followerError);
+    }
+
     return data;
   }
 
   // 4. ปฏิเสธหรือลบคำขอ
   static async removeRequest(requestId) {
     const cleanId = parseInt(requestId, 10) || requestId;
-    // ก่อนที่จะลบ buddyteam ให้เคลียร์ buddy_team_id ในตาราง driver ที่อ้างอิงถึงทีมนี้ก่อน
+    
+    // 1. เคลียร์ buddy_team_id ในตาราง driver ให้เป็น null เพื่อปล่อยคนขับทั้งสองคนให้เป็นอิสระ
     const { error: updateError } = await supabase
       .from('driver')
       .update({ buddy_team_id: null })
@@ -62,16 +95,17 @@ class BuddyRequestModel {
       console.error("Error setting driver buddy_team_id to null:", updateError);
     }
 
-    // เคลียร์ buddy_team_id ในตาราง requestbyuser ที่อ้างอิงถึงทีมนี้เพื่อหลีกเลี่ยง foreign key constraint violation
+    // 2. ลบประวัติการเดินทางในตาราง requestbyuser ที่อ้างอิงถึงทีมนี้ออก เพื่อหลีกเลี่ยง foreign key constraint
     const { error: reqError } = await supabase
       .from('requestbyuser')
-      .update({ buddy_team_id: null })
+      .delete()
       .eq('buddy_team_id', cleanId);
 
     if (reqError) {
-      console.error("Error setting requestbyuser buddy_team_id to null:", reqError);
+      console.error("Error deleting requestbyuser referencing this team:", reqError);
     }
 
+    // 3. ลบแถวข้อมูลของทีมนี้ออกจากตาราง buddyteam ในฐานข้อมูลโดยสมบูรณ์
     const { error } = await supabase
       .from('buddyteam')
       .delete()
@@ -83,11 +117,10 @@ class BuddyRequestModel {
 
   // 5. ดูคู่หูปัจจุบัน
   static async getActiveBuddy(userId) {
-    const cleanUserId = userId.toLowerCase();
     const { data, error } = await supabase
       .from('buddyteam')
       .select('*, leader:leaderid(username, firstname, lastname, regisimagepath), follower:followerid(username, firstname, lastname, regisimagepath)')
-      .or(`leaderid.eq.${cleanUserId},followerid.eq.${cleanUserId}`)
+      .or(`leaderid.ilike.${userId},followerid.ilike.${userId}`)
       .eq('teamstatus', 'Ready')
       .order('buddyteamid', { ascending: false })
       .limit(1)
