@@ -1,12 +1,26 @@
-import express from 'express'
-import cors from 'cors'
-import authRoutes from './routes/user/auth.route.js'
+const express = require('express');
+const cors = require('cors');
 
-const app = express()
+const authRoutes = require('./routes/driver/authRoutes');
+const userRoutes = require('./routes/driver/userRoutes');
+const walletRoutes = require('./routes/driver/walletRoutes');
+const buddyRequestRoutes = require('./routes/driver/buddyRequestRoutes');
+const driverReportRoutes = require('./routes/driver/driverReportRoutes');
 
-app.use(cors())
-app.use(express.json())
+const app = express();
 
-app.use('/api/auth', authRoutes)
+app.use(cors());
+app.use(express.json());
 
-export default app
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/wallets', walletRoutes);
+app.use('/api/buddy-team', buddyRequestRoutes);
+app.use('/api/driver-reports', driverReportRoutes);
+
+// User auth fallback
+const userAuthRoute = require('./routes/user/auth.route');
+app.use('/api/user/auth', userAuthRoute);
+
+module.exports = app;

@@ -1,6 +1,6 @@
-import { supabase } from '../config/supabase.js'
+const { supabase } = require('../../config/supabase.js');
 
-export const login = async (req, res) => {
+const login = async (req, res) => {
     try {
         const { phone, password } = req.body;
 
@@ -25,4 +25,7 @@ export const login = async (req, res) => {
     } catch (error) {
         return res.status(500).json({ error: 'Internal server error' });
     }
-}
+};
+
+module.exports = { login };
+

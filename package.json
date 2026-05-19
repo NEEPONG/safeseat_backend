@@ -10,7 +10,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
+
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
     "cors": "^2.8.6",
