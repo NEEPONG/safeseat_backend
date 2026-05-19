@@ -6,12 +6,12 @@ class BuddyRequestModel {
     const { data, error } = await supabase
       .from('buddyteam')
       .insert([
-        { 
-          leaderid: senderId, 
-          followerid: receiverId, 
+        {
+          leaderid: senderId,
+          followerid: receiverId,
           teamstatus: 'pending',
           currentloclat: 0, // ใส่ค่าเริ่มต้นเนื่องจากเป็น NOT NULL
-          currentloclng: 0 
+          currentloclng: 0
         }
       ])
       .select()
@@ -24,13 +24,13 @@ class BuddyRequestModel {
   // 2. ดึงคำขอที่ส่งมาถึงเรา (followerid = เรา)
   static async getPendingRequests(userId) {
     // const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    
+
     const { data, error } = await supabase
       .from('buddyteam')
       .select('*, sender:leaderid(username, firstname, lastname, regisimagepath)')
       .eq('followerid', userId)
       .eq('teamstatus', 'pending');
-      // .gt('teamdate', fiveMinutesAgo);
+    // .gt('teamdate', fiveMinutesAgo);
 
     if (error) throw error;
     return data;
