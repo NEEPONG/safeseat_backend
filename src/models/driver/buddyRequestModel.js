@@ -1,4 +1,5 @@
 const supabase = require('./dbClient');
+const { formatDriverDocs } = require('../../utils/supabaseStorage');
 
 class BuddyRequestModel {
   // 1. ส่งคำขอ (leaderid = คนส่ง, followerid = คนรับ)
@@ -33,6 +34,11 @@ class BuddyRequestModel {
     // .gt('teamdate', fiveMinutesAgo);
 
     if (error) throw error;
+    if (data) {
+      data.forEach(item => {
+        if (item.sender) formatDriverDocs(item.sender);
+      });
+    }
     return data;
   }
 
@@ -127,6 +133,10 @@ class BuddyRequestModel {
       .maybeSingle();
 
     if (error) throw error;
+    if (data) {
+      if (data.leader) formatDriverDocs(data.leader);
+      if (data.follower) formatDriverDocs(data.follower);
+    }
     return data;
   }
 }

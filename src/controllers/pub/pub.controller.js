@@ -11,6 +11,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 const pubService = require('../../services/pub/pub.service')
+const { uploadToSupabase } = require('../../utils/supabaseStorage')
 
 // ── Login Handler ─────────────────────────────────────────────
 // รับ POST /api/pub/login
@@ -41,9 +42,15 @@ const register = async (req, res) => {
     // นำข้อมูล text fields มาใส่ใน pubData
     const pubData = { ...req.body }
 
-    // ถ้าระบบอัปโหลดไฟล์ (multer) ได้รับ regisImagePath ให้ดึงพาร์ทไฟล์ไปเก็บด้วย
-    if (req.files && req.files.regisImagePath) {
-      pubData.regisImagePath = req.files.regisImagePath[0].path
+    // อัปโหลดรูปภาพไปยัง Supabase Storage และเก็บ URL แทน path ของเครื่อง local
+    if (req.files) {
+      if (req.files.regisImagePath) {
+        pubData.regisImagePath = await uploadToSupabase(req.files.regisImagePath[0], 'images', 'pubs/profile')
+      }
+      if (req.files.pubImagePath) {
+        // อัปโหลดเพื่อเคลียร์โฟลเดอร์ uploads และเผื่อกรณีที่ต้องการใช้งานรูปหน้าร้านในอนาคต
+        await uploadToSupabase(req.files.pubImagePath[0], 'images', 'pubs/storefront')
+      }
     }
 
     // ส่งข้อมูลที่เตรียมไว้ไปให้ service บันทึกลงฐานข้อมูล
@@ -56,6 +63,7 @@ const register = async (req, res) => {
     res.status(400).json({ success: false, message: err.message })
   }
 }
+
 // ── Check Email Handler ─────────────────────────────────────────
 // รับ POST /api/pub/check-email
 // Body: { email: string }

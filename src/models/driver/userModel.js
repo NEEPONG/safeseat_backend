@@ -1,4 +1,5 @@
 const supabase = require('./dbClient');
+const { formatDriverDocs } = require('../../utils/supabaseStorage');
 
 class UserModel {
   // Get user profile by username (phone number)
@@ -12,7 +13,7 @@ class UserModel {
     if (error) {
       throw error;
     }
-    return data;
+    return formatDriverDocs(data);
   }
 
   // Update user profile
@@ -27,7 +28,7 @@ class UserModel {
     if (error) {
       throw error;
     }
-    return data;
+    return formatDriverDocs(data);
   }
   // Search users by name or username
   static async searchUsers(search, category, exclude, lat, lng, radius = 2) {
@@ -71,21 +72,22 @@ class UserModel {
       const longitude = parseFloat(lng);
 
       return data.map(user => {
-        if (user.latitude && user.longitude) {
-          const dLat = (user.latitude - latitude) * Math.PI / 180;
-          const dLng = (user.longitude - longitude) * Math.PI / 180;
+        const formattedUser = formatDriverDocs(user);
+        if (formattedUser.latitude && formattedUser.longitude) {
+          const dLat = (formattedUser.latitude - latitude) * Math.PI / 180;
+          const dLng = (formattedUser.longitude - longitude) * Math.PI / 180;
           const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                    Math.cos(latitude * Math.PI / 180) * Math.cos(user.latitude * Math.PI / 180) *
+                    Math.cos(latitude * Math.PI / 180) * Math.cos(formattedUser.latitude * Math.PI / 180) *
                     Math.sin(dLng / 2) * Math.sin(dLng / 2);
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           const distance = 6371 * c; // Earth radius in km
-          return { ...user, distance: `${distance.toFixed(1)} km` };
+          return { ...formattedUser, distance: `${distance.toFixed(1)} km` };
         }
-        return { ...user, distance: 'Nearby' };
+        return { ...formattedUser, distance: 'Nearby' };
       });
     }
 
-    return data;
+    return data ? data.map(formatDriverDocs) : data;
   }
 }
 
