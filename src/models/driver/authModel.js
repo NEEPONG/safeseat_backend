@@ -51,6 +51,18 @@ class AuthModel {
     return !!data;
   }
 
+  // Check if ID card already exists
+  static async checkDuplicateIdCard(idcard) {
+    const { data, error } = await supabase
+      .from('driver')
+      .select('idcard')
+      .eq('idcard', idcard)
+      .maybeSingle();
+
+    if (error) throw error;
+    return !!data;
+  }
+
   // Register driver and their car
   static async register(driverData, carData) {
     // 1. Insert car information first

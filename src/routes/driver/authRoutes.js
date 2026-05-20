@@ -15,7 +15,11 @@ router.post('/register', upload.fields([
   { name: 'carImagePath', maxCount: 1 },
   { name: 'driverLicensePath', maxCount: 1 },
   { name: 'criminalRecordPath', maxCount: 1 },
-  { name: 'medicalCertificatePath', maxCount: 1 }
+  { name: 'medicalCertificatePath', maxCount: 1 },
+  { name: 'trainingCert1Path', maxCount: 1 },
+  { name: 'trainingCert2Path', maxCount: 1 },
+  { name: 'trainingCert3Path', maxCount: 1 },
+  { name: 'trainingCert4Path', maxCount: 1 }
 ]), AuthController.register);
 
 module.exports = router;

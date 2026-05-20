@@ -17,8 +17,8 @@ const uploadToSupabase = async (file, bucketName = 'images', folderName = 'uploa
   try {
     const fileBuffer = fs.readFileSync(file.path);
     const fileExtension = path.extname(file.originalname);
-    // Create a unique filename using timestamp and a random string
-    const uniqueFileName = `${folderName}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}${fileExtension}`;
+    // Create a unique filename using timestamp and a random string (shortened to save database space)
+    const uniqueFileName = `${folderName}/${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}${fileExtension}`;
 
     // Upload the file to Supabase Storage
     const { data, error } = await supabase.storage
@@ -77,25 +77,69 @@ const getRelativePath = (url) => {
 };
 
 /**
+ * Compresses a relative path to save database space.
+ * "drivers/profile/filename.ext" -> "p:filename.ext"
+ * "drivers/documents/filename.ext" -> "d:filename.ext"
+ */
+const compressPath = (relativePath) => {
+  if (!relativePath) return '';
+  if (relativePath.startsWith('drivers/profile/')) {
+    return 'p:' + relativePath.substring('drivers/profile/'.length);
+  }
+  if (relativePath.startsWith('drivers/documents/')) {
+    return 'd:' + relativePath.substring('drivers/documents/'.length);
+  }
+  return relativePath;
+};
+
+/**
+ * Decompresses a compressed path back to relative path.
+ * "p:filename.ext" -> "drivers/profile/filename.ext"
+ * "d:filename.ext" -> "drivers/documents/filename.ext"
+ */
+const decompressPath = (compressedPath) => {
+  if (!compressedPath) return '';
+  if (compressedPath.startsWith('p:')) {
+    return 'drivers/profile/' + compressedPath.substring(2);
+  }
+  if (compressedPath.startsWith('d:')) {
+    return 'drivers/documents/' + compressedPath.substring(2);
+  }
+  return compressedPath;
+};
+
+/**
  * Prepends the Supabase URL to get the full public storage URL.
  */
 const getFullStorageUrl = (relativePath) => {
   if (!relativePath) return '';
-  if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) {
-    return relativePath;
+  const decompressed = decompressPath(relativePath);
+  if (decompressed.startsWith('http://') || decompressed.startsWith('https://')) {
+    return decompressed;
   }
   const baseUrl = process.env.SUPABASE_URL || 'https://qbionbozkvlekpakvstg.supabase.co';
-  return `${baseUrl}/storage/v1/object/public/images/${relativePath}`.replace(/([^:]\/)\/+/g, "$1");
+  return `${baseUrl}/storage/v1/object/public/images/${decompressed}`.replace(/([^:]\/)\/+/g, "$1");
 };
 
-/**
- * Formats a driver object's regisimagepath field by converting relative paths back to full URLs.
- */
 const formatDriverDocs = (driver) => {
   if (!driver || !driver.regisimagepath) return driver;
   try {
     const docs = JSON.parse(driver.regisimagepath);
-    if (docs && typeof docs === 'object') {
+    if (Array.isArray(docs)) {
+      // Compressed array format: map to the full JSON object expected by frontend
+      const formattedDocs = {
+        profile: getFullStorageUrl(docs[0]),
+        driverLicense: getFullStorageUrl(docs[1]),
+        criminalRecord: getFullStorageUrl(docs[2]),
+        medicalCertificate: getFullStorageUrl(docs[3]),
+        trainingCert1: getFullStorageUrl(docs[4]),
+        trainingCert2: getFullStorageUrl(docs[5]),
+        trainingCert3: getFullStorageUrl(docs[6]),
+        trainingCert4: getFullStorageUrl(docs[7])
+      };
+      driver.regisimagepath = JSON.stringify(formattedDocs);
+    } else if (docs && typeof docs === 'object') {
+      // Legacy JSON object format
       const formattedDocs = {};
       for (const [key, val] of Object.entries(docs)) {
         formattedDocs[key] = getFullStorageUrl(val);
@@ -113,6 +157,8 @@ module.exports = {
   uploadToSupabase,
   getRelativePath,
   getFullStorageUrl,
-  formatDriverDocs
+  formatDriverDocs,
+  compressPath,
+  decompressPath
 };
 

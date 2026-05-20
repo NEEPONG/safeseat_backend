@@ -1,5 +1,5 @@
 const AuthModel = require('../../models/driver/authModel');
-const { uploadToSupabase, getRelativePath, formatDriverDocs } = require('../../utils/supabaseStorage');
+const { uploadToSupabase, getRelativePath, formatDriverDocs, compressPath } = require('../../utils/supabaseStorage');
 
 class AuthController {
   static async login(req, res) {
@@ -45,6 +45,10 @@ class AuthController {
         validateFile(req.files.driverLicensePath ? req.files.driverLicensePath[0] : null, 'รูปภาพใบขับขี่');
         validateFile(req.files.criminalRecordPath ? req.files.criminalRecordPath[0] : null, 'รูปภาพประวัติอาชญากรรม');
         validateFile(req.files.medicalCertificatePath ? req.files.medicalCertificatePath[0] : null, 'ใบรับรองแพทย์ตรวจสุขภาพ');
+        validateFile(req.files.trainingCert1Path ? req.files.trainingCert1Path[0] : null, 'เกียรติบัตรการอบรม คอร์สที่ 1');
+        validateFile(req.files.trainingCert2Path ? req.files.trainingCert2Path[0] : null, 'เกียรติบัตรการอบรม คอร์สที่ 2');
+        validateFile(req.files.trainingCert3Path ? req.files.trainingCert3Path[0] : null, 'เกียรติบัตรการอบรม คอร์สที่ 3');
+        validateFile(req.files.trainingCert4Path ? req.files.trainingCert4Path[0] : null, 'เกียรติบัตรการอบรม คอร์สที่ 4');
       } catch (fileError) {
         return res.status(400).json({ error: fileError.message });
       }
@@ -72,8 +76,8 @@ class AuthController {
       if (!firstName || firstName.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกชื่อ (firstName)' });
       }
-      if (!/^[a-zA-Z0-9]{2,50}$/.test(firstName)) {
-        return res.status(400).json({ error: 'ชื่อ (firstName) ต้องเป็นตัวอักษรอังกฤษหรือตัวเลขเท่านั้น ความยาว 2 - 50 ตัวอักษร และไม่มีช่องว่าง' });
+      if (!/^[ก-๙a-zA-Z]{2,50}$/.test(firstName)) {
+        return res.status(400).json({ error: 'ชื่อ (firstName) ต้องเป็นตัวอักษรภาษาไทยหรืออังกฤษเท่านั้น ความยาว 2 - 50 ตัวอักษร' });
       }
 
       if (!lastName || lastName.trim() === '') {
@@ -181,20 +185,33 @@ class AuthController {
         return res.status(400).json({ error: 'หมายเลขโทรศัพท์นี้สมัครสมาชิกแล้ว' });
       }
 
+      const idCardDup = await AuthModel.checkDuplicateIdCard(idCard);
+      if (idCardDup) {
+        return res.status(400).json({ error: 'หมายเลขบัตรประชาชนนี้สมัครสมาชิกแล้ว' });
+      }
+
       // ── Validation 4: Upload Files to Supabase Storage ───────
       const regisImagePath = await uploadToSupabase(req.files.regisImagePath[0], 'images', 'drivers/profile');
       const carImagePath = await uploadToSupabase(req.files.carImagePath[0], 'images', 'drivers/cars');
       const driverLicensePath = await uploadToSupabase(req.files.driverLicensePath[0], 'images', 'drivers/documents');
       const criminalRecordPath = await uploadToSupabase(req.files.criminalRecordPath[0], 'images', 'drivers/documents');
       const medicalCertificatePath = await uploadToSupabase(req.files.medicalCertificatePath[0], 'images', 'drivers/documents');
+      const trainingCert1Path = await uploadToSupabase(req.files.trainingCert1Path[0], 'images', 'drivers/documents');
+      const trainingCert2Path = await uploadToSupabase(req.files.trainingCert2Path[0], 'images', 'drivers/documents');
+      const trainingCert3Path = await uploadToSupabase(req.files.trainingCert3Path[0], 'images', 'drivers/documents');
+      const trainingCert4Path = await uploadToSupabase(req.files.trainingCert4Path[0], 'images', 'drivers/documents');
 
-      // Pack all driver documents into a single JSON string for the 'regisimagepath' column
-      const regisImagePathJson = JSON.stringify({
-        profile: getRelativePath(regisImagePath),
-        driverLicense: getRelativePath(driverLicensePath),
-        criminalRecord: getRelativePath(criminalRecordPath),
-        medicalCertificate: getRelativePath(medicalCertificatePath)
-      });
+      // Pack all driver documents into a single JSON string for the 'regisimagepath' column (compressed array format to fit under 255 chars)
+      const regisImagePathJson = JSON.stringify([
+        compressPath(getRelativePath(regisImagePath)),
+        compressPath(getRelativePath(driverLicensePath)),
+        compressPath(getRelativePath(criminalRecordPath)),
+        compressPath(getRelativePath(medicalCertificatePath)),
+        compressPath(getRelativePath(trainingCert1Path)),
+        compressPath(getRelativePath(trainingCert2Path)),
+        compressPath(getRelativePath(trainingCert3Path)),
+        compressPath(getRelativePath(trainingCert4Path))
+      ]);
 
       // Prepare database records
       const finalDriverData = {
