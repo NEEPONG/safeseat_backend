@@ -4,8 +4,8 @@ const { uploadToSupabase, getRelativePath, formatDriverDocs, compressPath } = re
 class AuthController {
   static async login(req, res) {
     try {
-      const { username, password } = req.body;
-      const user = await AuthModel.login(username, password);
+      const { username, password, latitude, longitude } = req.body;
+      const user = await AuthModel.login(username, password, latitude, longitude);
       
       if (!user) {
         return res.status(401).json({ error: 'Invalid username or password' });

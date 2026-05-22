@@ -73,7 +73,7 @@ class UserModel {
 
       return data.map(user => {
         const formattedUser = formatDriverDocs(user);
-        if (formattedUser.latitude && formattedUser.longitude) {
+        if (formattedUser.latitude != null && formattedUser.longitude != null) {
           const dLat = (formattedUser.latitude - latitude) * Math.PI / 180;
           const dLng = (formattedUser.longitude - longitude) * Math.PI / 180;
           const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +

@@ -2,8 +2,8 @@ const supabase = require('./dbClient');
 const { formatDriverDocs } = require('../../utils/supabaseStorage');
 
 class AuthModel {
-  static async login(username, password) {
-    const { data, error } = await supabase
+  static async login(username, password, latitude, longitude) {
+    let { data, error } = await supabase
       .from('driver')
       .select('*')
       .eq('username', username)
@@ -12,6 +12,21 @@ class AuthModel {
       .maybeSingle();
 
     if (error) throw error;
+
+    // If login is successful and location is provided, update the location
+    if (data && latitude !== undefined && longitude !== undefined) {
+      const { data: updatedData, error: updateError } = await supabase
+        .from('driver')
+        .update({ latitude, longitude })
+        .eq('username', username)
+        .select('*')
+        .maybeSingle();
+      
+      if (!updateError && updatedData) {
+        data = updatedData;
+      }
+    }
+
     return formatDriverDocs(data);
   }
 
