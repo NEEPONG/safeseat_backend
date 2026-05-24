@@ -27,4 +27,8 @@ app.use('/api/pub', pubRoute);
 const userAuthRoute = require('./routes/user/auth.route');
 app.use('/api/user/auth', userAuthRoute);
 
+// User profile route
+const userProfileRoute = require('./routes/user/profile.route');
+app.use('/api/user/profile', userProfileRoute);
+
 module.exports = app;
