@@ -22,5 +22,8 @@ router.post('/register', upload.fields([
   { name: 'trainingCert4Path', maxCount: 1 }
 ]), AuthController.register);
 
+// GET /api/auth/status/:username
+router.get('/status/:username', AuthController.getStatus);
+
 module.exports = router;
 

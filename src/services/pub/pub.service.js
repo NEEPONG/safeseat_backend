@@ -13,6 +13,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 const PubModel = require('../../models/pub/pub.model')
+const bcrypt = require('bcrypt')
 
 // ── Regex Patterns ────────────────────────────────────────────
 // ตัวแปร regex นิยามนอก function เพื่อ compile ครั้งเดียว (ประหยัด memory)
@@ -108,11 +109,12 @@ const registerPub = async (pubData) => {
   }
 
   // ── Insert ข้อมูลลง Supabase ─────────────────────────────────
-  // แปลงชื่อ field จาก camelCase (Frontend) → lowercase (ชื่อ column จริงใน DB)
-  // เช่น pubName → pubname, taxNumber → taxnumber
+  const salt = await bcrypt.genSalt(10)
+  const hashedPassword = await bcrypt.hash(password, salt)
+
   return await PubModel.create({
     username,
-    password,         // TODO: ควร hash password ด้วย bcrypt ก่อน insert จริง
+    password: hashedPassword,
 
     pubname:  pubName,
     pubemail: pubEmail,
@@ -147,9 +149,13 @@ const loginPub = async (username, password) => {
   // ค้นหา pub จาก username ในฐานข้อมูล
   const pub = await PubModel.findByUsername(username)
 
-  // ถ้าไม่พบ username หรือ password ไม่ตรง → throw error
-  // TODO: ควรใช้ bcrypt.compare() แทนการเปรียบเทียบ string ตรง ๆ
-  if (!pub || pub.password !== password) {
+  if (!pub) {
+    throw new Error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
+  }
+
+  const isMatch = await bcrypt.compare(password, pub.password)
+  
+  if (!isMatch) {
     throw new Error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
   }
 
