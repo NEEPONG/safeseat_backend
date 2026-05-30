@@ -27,4 +27,9 @@ app.use('/api/pub', pubRoute);
 const userAuthRoute = require('./routes/user/auth.route');
 app.use('/api/user/auth', userAuthRoute);
 
-module.exports = app;
+// Admin routes
+const adminRoutes = require('./routes/admin/adminRoutes');
+app.use('/api/admin', adminRoutes);
+
+module.exports = app;
+
