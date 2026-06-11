@@ -27,9 +27,18 @@ app.use('/api/pub', pubRoute);
 const userAuthRoute = require('./routes/user/auth.route');
 app.use('/api/user/auth', userAuthRoute);
 
+// User profile route
+const userProfileRoute = require('./routes/user/profile.route');
+app.use('/api/user/profile', userProfileRoute);
+
+// User location route (SerpApi wrapper)
+const userLocationRoute = require('./routes/user/location.route');
+app.use('/api/user/location', userLocationRoute);
+
 // Admin routes
 const adminRoutes = require('./routes/admin/adminRoutes');
 app.use('/api/admin', adminRoutes);
 
 module.exports = app;
-
+
+
