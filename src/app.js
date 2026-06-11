@@ -35,4 +35,10 @@ app.use('/api/user/profile', userProfileRoute);
 const userLocationRoute = require('./routes/user/location.route');
 app.use('/api/user/location', userLocationRoute);
 
-module.exports = app;
+// Admin routes
+const adminRoutes = require('./routes/admin/adminRoutes');
+app.use('/api/admin', adminRoutes);
+
+module.exports = app;
+
+

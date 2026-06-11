@@ -1,5 +1,6 @@
 const AuthModel = require('../../models/driver/authModel');
 const { uploadToSupabase, getRelativePath, formatDriverDocs, compressPath } = require('../../utils/supabaseStorage');
+const bcrypt = require('bcrypt');
 
 class AuthController {
   static async login(req, res) {
@@ -214,9 +215,12 @@ class AuthController {
       ]);
 
       // Prepare database records
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
       const finalDriverData = {
         username: finalUsername,
-        password: password, // Matching existing plain text comparison in AuthModel
+        password: hashedPassword, // Hash password before saving
         firstname: firstName,
         lastname: lastName,
         email: email,
@@ -254,7 +258,7 @@ class AuthController {
 
       return res.status(201).json({
         success: true,
-        message: 'สมัครสมาชิกสำเร็จ รอการอนุมัติจากผู้ดูแลระบบ',
+        message: 'สมัครสมาชิกสำเร็จ กรุณาตรวจสอบสถานะผ่านการเข้าสู่ระบบ',
         data: result,
         uploadedDocuments: {
           driverLicense: driverLicensePath,
@@ -266,6 +270,28 @@ class AuthController {
     } catch (error) {
       console.error('Registration error:', error);
       return res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  }
+  static async getStatus(req, res) {
+    try {
+      const { username } = req.params;
+      
+      if (!username) {
+        return res.status(400).json({ error: 'Username is required' });
+      }
+
+      const statusData = await AuthModel.getStatus(username);
+      if (!statusData) {
+        return res.status(404).json({ error: 'ไม่พบข้อมูลผู้ให้บริการขับรถรายนี้' });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: statusData
+      });
+    } catch (error) {
+      console.error('Get status error:', error);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 }

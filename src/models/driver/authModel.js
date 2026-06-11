@@ -1,5 +1,6 @@
 const supabase = require('./dbClient');
 const { formatDriverDocs } = require('../../utils/supabaseStorage');
+const bcrypt = require('bcrypt');
 
 class AuthModel {
   static async login(username, password, latitude, longitude) {
@@ -7,11 +8,13 @@ class AuthModel {
       .from('driver')
       .select('*')
       .eq('username', username)
-      .eq('password', password)
-      .eq('registerstatus', 'อนุมัติแล้ว')
       .maybeSingle();
 
     if (error) throw error;
+    if (!data) return null;
+
+    const isMatch = await bcrypt.compare(password, data.password);
+    if (!isMatch) return null;
 
     // If login is successful and location is provided, update the location
     if (data && latitude !== undefined && longitude !== undefined) {
@@ -40,6 +43,18 @@ class AuthModel {
 
     if (error) throw error;
     return !!data;
+  }
+
+  // Get registration status for driver
+  static async getStatus(username) {
+    const { data, error } = await supabase
+      .from('driver')
+      .select('registerstatus, regisdate, firstname, lastname, email, phoneno')
+      .eq('username', username)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
   }
 
   // Check if email already exists
