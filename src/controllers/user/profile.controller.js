@@ -74,4 +74,117 @@ const updateProfile = async (req, res) => {
     }
 };
 
-module.exports = { getProfile, updateProfile };
+const getUserCars = async (req, res) => {
+    try {
+        const { phoneNo } = req.params;
+        const { data: cars, error } = await supabase
+            .from('usercar')
+            .select(`
+                *,
+                cartype (
+                    cartypename
+                )
+            `)
+            .eq('user_id', phoneNo);
+
+        if (error) {
+            console.error("Get user cars error:", error);
+            return res.status(500).json({ error: 'เกิดข้อผิดพลาดในการดึงข้อมูลรถ' });
+        }
+
+        return res.status(200).json({
+            message: 'Fetch cars successful',
+            cars: cars
+        });
+    } catch (error) {
+        console.error("Get user cars error:", error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+const getCarTypes = async (req, res) => {
+    try {
+        const { data: carTypes, error } = await supabase
+            .from('cartype')
+            .select('*');
+
+        if (error) {
+            console.error("Get car types error:", error);
+            return res.status(500).json({ error: 'เกิดข้อผิดพลาดในการดึงข้อมูลประเภทรถ' });
+        }
+
+        return res.status(200).json({
+            message: 'Fetch car types successful',
+            carTypes: carTypes
+        });
+    } catch (error) {
+        console.error("Get car types error:", error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+const addUserCar = async (req, res) => {
+    try {
+        const { carbrand, carcolor, carmodel, carplate, car_type, user_id } = req.body;
+
+        if (!carbrand || !carcolor || !carmodel || !carplate || !car_type || !user_id) {
+            return res.status(400).json({ error: 'Please provide all required fields' });
+        }
+
+        const { data: newCar, error } = await supabase
+            .from('usercar')
+            .insert([{
+                carbrand,
+                carcolor,
+                carmodel,
+                carplate,
+                car_type,
+                user_id
+            }])
+            .select(`
+                *,
+                cartype (
+                    cartypename
+                )
+            `)
+            .single();
+
+        if (error) {
+            console.error("Add car error:", error);
+            return res.status(500).json({ error: 'เกิดข้อผิดพลาดในการเพิ่มข้อมูลรถ' });
+        }
+
+        return res.status(201).json({
+            message: 'Add car successful',
+            car: newCar
+        });
+    } catch (error) {
+        console.error("Add car error:", error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+const deleteUserCar = async (req, res) => {
+    try {
+        const { usercarid } = req.params;
+
+        const { error } = await supabase
+            .from('usercar')
+            .delete()
+            .eq('usercarid', usercarid);
+
+        if (error) {
+            console.error("Delete car error:", error);
+            return res.status(500).json({ error: 'เกิดข้อผิดพลาดในการลบข้อมูลรถ' });
+        }
+
+        return res.status(200).json({
+            message: 'Delete car successful'
+        });
+    } catch (error) {
+        console.error("Delete car error:", error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+module.exports = { getProfile, updateProfile, getUserCars, getCarTypes, addUserCar, deleteUserCar };

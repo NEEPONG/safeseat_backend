@@ -31,4 +31,8 @@ app.use('/api/user/auth', userAuthRoute);
 const userProfileRoute = require('./routes/user/profile.route');
 app.use('/api/user/profile', userProfileRoute);
 
+// User location route (SerpApi wrapper)
+const userLocationRoute = require('./routes/user/location.route');
+app.use('/api/user/location', userLocationRoute);
+
 module.exports = app;
