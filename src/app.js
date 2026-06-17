@@ -35,6 +35,10 @@ app.use('/api/user/profile', userProfileRoute);
 const userLocationRoute = require('./routes/user/location.route');
 app.use('/api/user/location', userLocationRoute);
 
+// User request route
+const userRequestRoute = require('./routes/user/request.route');
+app.use('/api/user/request', userRequestRoute);
+
 // Admin routes
 const adminRoutes = require('./routes/admin/adminRoutes');
 app.use('/api/admin', adminRoutes);
