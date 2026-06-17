@@ -1,34 +1,65 @@
 const supabase = require('./dbClient');
-const { formatDriverDocs } = require('../../utils/supabaseStorage');
+const { formatDriverDocs, getFullStorageUrl } = require('../../utils/supabaseStorage');
+
+const formatCarImagePath = (driver) => {
+  if (driver && driver.drivercar && driver.drivercar.carimagepath) {
+    driver.drivercar.carimagepath = getFullStorageUrl(driver.drivercar.carimagepath);
+  }
+  return driver;
+};
 
 class UserModel {
   // Get user profile by username (phone number)
   static async getProfileByUsername(username) {
     const { data, error } = await supabase
       .from('driver')
-      .select('*')
+      .select('*, drivercar:driver_car(*)')
       .or(`username.eq.${username},phoneno.eq.${username}`)
       .maybeSingle();
 
     if (error) {
       throw error;
     }
-    return formatDriverDocs(data);
+    return formatCarImagePath(formatDriverDocs(data));
   }
 
   // Update user profile
   static async updateProfile(username, profileData) {
-    const { data, error } = await supabase
+    const { drivercar, ...driverFields } = profileData;
+
+    if (drivercar) {
+      // 1. Get the drivercar ID for this driver
+      const { data: driverRow, error: getDriverError } = await supabase
+        .from('driver')
+        .select('driver_car')
+        .eq('username', username)
+        .maybeSingle();
+
+      if (!getDriverError && driverRow && driverRow.driver_car) {
+        // 2. Update the drivercar row
+        const { error: carError } = await supabase
+          .from('drivercar')
+          .update(drivercar)
+          .eq('drivercarid', driverRow.driver_car);
+
+        if (carError) {
+          throw carError;
+        }
+      }
+    }
+
+    // 3. Update the driver row
+    const { data: updatedDriver, error: driverError } = await supabase
       .from('driver')
-      .update(profileData)
+      .update(driverFields)
       .eq('username', username)
-      .select()
+      .select('*, drivercar:driver_car(*)')
       .maybeSingle();
 
-    if (error) {
-      throw error;
+    if (driverError) {
+      throw driverError;
     }
-    return formatDriverDocs(data);
+    return formatCarImagePath(formatDriverDocs(updatedDriver));
   }
   // Search users by name or username
   static async searchUsers(search, category, exclude, lat, lng, radius = 2) {
