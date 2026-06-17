@@ -51,12 +51,17 @@ class DispatcherService {
       let minDistance = 5; // ล็อครัศมีสูงสุดที่ 5 กิโลเมตร
 
       for (const team of teams) {
-        if (!team.currentloclat || !team.currentloclng) continue;
+        if (!team.currentloclat || !team.currentloclng) {
+          console.log(`[Dispatcher] ทีม ID ${team.buddyteamid} ไม่มีข้อมูลพิกัด (Lat/Lng is null/0)`);
+          continue;
+        }
         
+        console.log(`[Dispatcher] คำนวณระยะทาง - User: (${job.pickuplatitude}, ${job.pickuplongitude}) vs Team ID ${team.buddyteamid}: (${team.currentloclat}, ${team.currentloclng})`);
         const distance = calculateDistance(
           job.pickuplatitude, job.pickuplongitude,
           team.currentloclat, team.currentloclng
         );
+        console.log(`[Dispatcher] ระยะทางไปยัง Team ID ${team.buddyteamid} = ${distance.toFixed(2)} กม.`);
 
         if (distance <= minDistance) {
           minDistance = distance;
@@ -75,10 +80,16 @@ class DispatcherService {
         };
 
         const channel = supabase.channel(`team_room_${nearestTeam.buddyteamid}`);
-        await channel.send({
-          type: 'broadcast',
-          event: 'new_job_dispatched',
-          payload: jobPayload
+        channel.subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await channel.send({
+              type: 'broadcast',
+              event: 'new_job_dispatched',
+              payload: jobPayload
+            });
+            // ถอดการเชื่อมต่อ channel หลังจากส่งเสร็จเพื่อไม่ให้เปลืองทรัพยากร
+            supabase.removeChannel(channel);
+          }
         });
       } else {
         console.log(`[Dispatcher] ❌ ไม่มีทีมคนขับอยู่ในรัศมี 5 กม. (Request ID: ${job.requestid})`);
