@@ -150,7 +150,7 @@ class BuddyRequestModel {
         requeststatus: 'กำลังไปรับ' 
       })
       .eq('requestid', requestId)
-      .eq('requeststatus', 'รอคนขับ') // การันตี Atomic Update
+      .eq('requeststatus', 'pending') // การันตี Atomic Update
       .select();
 
     if (jobError) throw jobError;

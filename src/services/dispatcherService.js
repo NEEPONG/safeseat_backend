@@ -23,7 +23,7 @@ class DispatcherService {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'requestbyuser' }, async (payload) => {
         const newJob = payload.new;
         
-        if (newJob.requeststatus === 'รอคนขับ') {
+        if (newJob.requeststatus === 'pending') {
           console.log(`[Dispatcher] 🔔 พบงานใหม่! Request ID: ${newJob.requestid}`);
           await DispatcherService.dispatchJob(newJob);
         }
