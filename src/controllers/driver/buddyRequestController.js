@@ -3,8 +3,8 @@ const BuddyRequestModel = require('../../models/driver/buddyRequestModel');
 class BuddyRequestController {
   static async send(req, res) {
     try {
-      const { sender_id, receiver_id } = req.body;
-      const request = await BuddyRequestModel.sendRequest(sender_id, receiver_id);
+      const { sender_id, receiver_id, lat, lng } = req.body;
+      const request = await BuddyRequestModel.sendRequest(sender_id, receiver_id, lat, lng);
       res.status(201).json(request);
     } catch (error) {
       console.error("Error sending request:", error);

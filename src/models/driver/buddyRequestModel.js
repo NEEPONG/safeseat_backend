@@ -3,7 +3,7 @@ const { formatDriverDocs } = require('../../utils/supabaseStorage');
 
 class BuddyRequestModel {
   // 1. ส่งคำขอ (leaderid = คนส่ง, followerid = คนรับ)
-  static async sendRequest(senderId, receiverId) {
+  static async sendRequest(senderId, receiverId, lat = 0, lng = 0) {
     const { data, error } = await supabase
       .from('buddyteam')
       .insert([
@@ -11,8 +11,8 @@ class BuddyRequestModel {
           leaderid: senderId,
           followerid: receiverId,
           teamstatus: 'pending',
-          currentloclat: 0, // ใส่ค่าเริ่มต้นเนื่องจากเป็น NOT NULL
-          currentloclng: 0
+          currentloclat: lat, // ใช้ค่าพิกัดที่ส่งมา
+          currentloclng: lng
         }
       ])
       .select()
