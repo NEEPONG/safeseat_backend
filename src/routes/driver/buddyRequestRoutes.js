@@ -7,5 +7,6 @@ router.get('/pending/:userId', BuddyRequestController.getPending);
 router.put('/accept/:id', BuddyRequestController.accept);
 router.put('/reject/:id', BuddyRequestController.reject);
 router.get('/active/:userId', BuddyRequestController.getActive);
+router.post('/accept-job', BuddyRequestController.acceptJob);
 
 module.exports = router;

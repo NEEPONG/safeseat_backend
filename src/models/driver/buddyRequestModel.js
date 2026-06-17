@@ -139,6 +139,35 @@ class BuddyRequestModel {
     }
     return data;
   }
+
+  // 6. รับงาน (Accept Job)
+  static async acceptJob(requestId, buddyTeamId) {
+    // 1. ตรวจสอบว่างานยังว่างอยู่ไหม และรับงาน
+    const { data: jobData, error: jobError } = await supabase
+      .from('requestbyuser')
+      .update({ 
+        buddy_team_id: buddyTeamId, 
+        requeststatus: 'กำลังไปรับ' 
+      })
+      .eq('requestid', requestId)
+      .eq('requeststatus', 'รอคนขับ') // การันตี Atomic Update
+      .select();
+
+    if (jobError) throw jobError;
+    if (!jobData || jobData.length === 0) {
+      throw new Error('งานนี้ถูกรับไปแล้วหรือหมดเวลา');
+    }
+
+    // 2. ปรับสถานะทีมเป็น Busy
+    const { error: teamError } = await supabase
+      .from('buddyteam')
+      .update({ teamstatus: 'Busy' })
+      .eq('buddyteamid', buddyTeamId);
+
+    if (teamError) throw teamError;
+
+    return jobData[0];
+  }
 }
 
 module.exports = BuddyRequestModel;

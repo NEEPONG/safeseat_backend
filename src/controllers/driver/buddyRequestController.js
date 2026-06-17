@@ -55,6 +55,17 @@ class BuddyRequestController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  static async acceptJob(req, res) {
+    try {
+      const { request_id, buddy_team_id } = req.body;
+      const job = await BuddyRequestModel.acceptJob(request_id, buddy_team_id);
+      res.status(200).json({ success: true, message: 'รับงานสำเร็จ!', job });
+    } catch (error) {
+      console.error("Error accepting job:", error);
+      res.status(400).json({ success: false, message: error.message || 'Server Error' });
+    }
+  }
 }
 
 module.exports = BuddyRequestController;
