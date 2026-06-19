@@ -3,7 +3,20 @@ const { formatDriverDocs, getFullStorageUrl } = require('../../utils/supabaseSto
 
 const formatCarImagePath = (driver) => {
   if (driver && driver.drivercar && driver.drivercar.carimagepath) {
-    driver.drivercar.carimagepath = getFullStorageUrl(driver.drivercar.carimagepath);
+    try {
+      const paths = JSON.parse(driver.drivercar.carimagepath);
+      if (paths && typeof paths === 'object') {
+        const formatted = {};
+        for (const [key, val] of Object.entries(paths)) {
+          formatted[key] = getFullStorageUrl(val);
+        }
+        driver.drivercar.carimagepath = JSON.stringify(formatted);
+      } else {
+        driver.drivercar.carimagepath = getFullStorageUrl(driver.drivercar.carimagepath);
+      }
+    } catch (e) {
+      driver.drivercar.carimagepath = getFullStorageUrl(driver.drivercar.carimagepath);
+    }
   }
   return driver;
 };

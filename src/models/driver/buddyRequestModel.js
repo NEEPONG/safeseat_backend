@@ -142,14 +142,17 @@ class BuddyRequestModel {
 
   // 6. รับงาน (Accept Job)
   static async acceptJob(requestId, buddyTeamId) {
+    const cleanRequestId = parseInt(requestId, 10);
+    const cleanBuddyTeamId = parseInt(buddyTeamId, 10);
+
     // 1. ตรวจสอบว่างานยังว่างอยู่ไหม และรับงาน
     const { data: jobData, error: jobError } = await supabase
       .from('requestbyuser')
       .update({ 
-        buddy_team_id: buddyTeamId, 
+        buddy_team_id: cleanBuddyTeamId, 
         requeststatus: 'กำลังไปรับ' 
       })
-      .eq('requestid', requestId)
+      .eq('requestid', cleanRequestId)
       .eq('requeststatus', 'pending') // การันตี Atomic Update
       .select();
 
@@ -162,7 +165,7 @@ class BuddyRequestModel {
     const { error: teamError } = await supabase
       .from('buddyteam')
       .update({ teamstatus: 'Busy' })
-      .eq('buddyteamid', buddyTeamId);
+      .eq('buddyteamid', cleanBuddyTeamId);
 
     if (teamError) throw teamError;
 
