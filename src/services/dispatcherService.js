@@ -15,7 +15,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 class DispatcherService {
   static start() {
-    console.log('[Dispatcher] 🟢 เริ่มต้นระบบดักจับงานจากผู้ใช้...');
+    console.log('[Dispatcher] 🟢 เริ่มต้นระบบดักจับงานจากผู้ใช้และผับ...');
 
     // ดักฟังตาราง requestbyuser เมื่อมีข้อมูลใหม่ถูก Insert
     supabase
@@ -24,7 +24,22 @@ class DispatcherService {
         const newJob = payload.new;
         
         if (newJob.requeststatus === 'pending') {
-          console.log(`[Dispatcher] 🔔 พบงานใหม่! Request ID: ${newJob.requestid}`);
+          console.log(`[Dispatcher] 🔔 พบงานใหม่จากผู้ใช้! Request ID: ${newJob.requestid}`);
+          newJob.isPubJob = false;
+          await DispatcherService.dispatchJob(newJob);
+        }
+      })
+      .subscribe();
+
+    // ดักฟังตาราง requestbypub เมื่อมีข้อมูลใหม่ถูก Insert
+    supabase
+      .channel('public:requestbypub')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'requestbypub' }, async (payload) => {
+        const newJob = payload.new;
+        
+        if (newJob.requeststatus === 'pending' || newJob.requeststatus === 'รอคนขับ') {
+          console.log(`[Dispatcher] 🔔 พบงานใหม่จากผับ! Request ID: ${newJob.requestid}`);
+          newJob.isPubJob = true;
           await DispatcherService.dispatchJob(newJob);
         }
       })

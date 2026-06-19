@@ -101,7 +101,7 @@ class BuddyRequestModel {
       console.error("Error setting driver buddy_team_id to null:", updateError);
     }
 
-    // 2. ลบประวัติการเดินทางในตาราง requestbyuser ที่อ้างอิงถึงทีมนี้ออก เพื่อหลีกเลี่ยง foreign key constraint
+    // 2. ลบประวัติการเดินทางในตาราง requestbyuser และ requestbypub ที่อ้างอิงถึงทีมนี้ออก เพื่อหลีกเลี่ยง foreign key constraint
     const { error: reqError } = await supabase
       .from('requestbyuser')
       .delete()
@@ -109,6 +109,15 @@ class BuddyRequestModel {
 
     if (reqError) {
       console.error("Error deleting requestbyuser referencing this team:", reqError);
+    }
+
+    const { error: pubReqError } = await supabase
+      .from('requestbypub')
+      .delete()
+      .eq('buddy_team_id', cleanId);
+
+    if (pubReqError) {
+      console.error("Error deleting requestbypub referencing this team:", pubReqError);
     }
 
     // 3. ลบแถวข้อมูลของทีมนี้ออกจากตาราง buddyteam ในฐานข้อมูลโดยสมบูรณ์
@@ -141,27 +150,59 @@ class BuddyRequestModel {
   }
 
   // 6. รับงาน (Accept Job)
-  static async acceptJob(requestId, buddyTeamId) {
+  static async acceptJob(requestId, buddyTeamId, isPubJob = false) {
     const cleanRequestId = parseInt(requestId, 10);
     const cleanBuddyTeamId = parseInt(buddyTeamId, 10);
+    
+    // Try primary table first, and fallback to secondary if not found
+    const primaryTable = isPubJob ? 'requestbypub' : 'requestbyuser';
+    const secondaryTable = isPubJob ? 'requestbyuser' : 'requestbypub';
 
-    // 1. ตรวจสอบว่างานยังว่างอยู่ไหม และรับงาน
-    const { data: jobData, error: jobError } = await supabase
-      .from('requestbyuser')
+    let jobData = null;
+    let jobError = null;
+
+    // 1. ตรวจสอบในตารางหลัก
+    const { data: primaryData, error: primaryError } = await supabase
+      .from(primaryTable)
       .update({ 
         buddy_team_id: cleanBuddyTeamId, 
-        requeststatus: 'กำลังไปรับ' 
+        requeststatus: 'going to pickup' 
       })
       .eq('requestid', cleanRequestId)
-      .eq('requeststatus', 'pending') // การันตี Atomic Update
+      .in('requeststatus', ['pending', 'รอคนขับ']) // การันตี Atomic Update
       .select();
 
-    if (jobError) throw jobError;
+    if (primaryError) {
+      jobError = primaryError;
+    } else if (primaryData && primaryData.length > 0) {
+      jobData = primaryData;
+    }
+
+    // 2. ถ้าไม่พบในตารางหลัก ลองหาในตารางรอง
+    if (!jobData || jobData.length === 0) {
+      const { data: secondaryData, error: secondaryError } = await supabase
+        .from(secondaryTable)
+        .update({ 
+          buddy_team_id: cleanBuddyTeamId, 
+          requeststatus: 'going to pickup' 
+        })
+        .eq('requestid', cleanRequestId)
+        .in('requeststatus', ['pending', 'รอคนขับ'])
+        .select();
+
+      if (secondaryError) {
+        jobError = secondaryError;
+      } else if (secondaryData && secondaryData.length > 0) {
+        jobData = secondaryData;
+      }
+    }
+
+    if (jobError && (!jobData || jobData.length === 0)) throw jobError;
     if (!jobData || jobData.length === 0) {
       throw new Error('งานนี้ถูกรับไปแล้วหรือหมดเวลา');
     }
 
-    // 2. ปรับสถานะทีมเป็น Busy
+    // 3. ปรับสถานะทีมเป็น Busy
     const { error: teamError } = await supabase
       .from('buddyteam')
       .update({ teamstatus: 'Busy' })
