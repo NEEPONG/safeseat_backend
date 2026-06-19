@@ -15,7 +15,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 class DispatcherService {
   static start() {
-    console.log('[Dispatcher] 🟢 เริ่มต้นระบบดักจับงานจากผู้ใช้...');
+    console.log('[Dispatcher] 🟢 เริ่มต้นระบบดักจับงานจากผู้ใช้และร้านค้า...');
 
     // ดักฟังตาราง requestbyuser เมื่อมีข้อมูลใหม่ถูก Insert
     supabase
@@ -25,13 +25,26 @@ class DispatcherService {
         
         if (newJob.requeststatus === 'pending') {
           console.log(`[Dispatcher] 🔔 พบงานใหม่! Request ID: ${newJob.requestid}`);
-          await DispatcherService.dispatchJob(newJob);
+          await DispatcherService.dispatchJob(newJob, 'user');
+        }
+      })
+      .subscribe();
+
+    // ดักฟังตาราง requestbypub เมื่อมีข้อมูลใหม่ถูก Insert
+    supabase
+      .channel('public:requestbypub')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'requestbypub' }, async (payload) => {
+        const newJob = payload.new;
+        
+        if (newJob.requeststatus === 'รอคนขับ') {
+          console.log(`[Dispatcher] 🔔 พบงานใหม่จากร้านค้า! Request ID: ${newJob.requestid}`);
+          await DispatcherService.dispatchJob(newJob, 'pub');
         }
       })
       .subscribe();
   }
 
-  static async dispatchJob(job) {
+  static async dispatchJob(job, type = 'user') {
     try {
       // 1. ดึงทีมคนขับที่กำลังว่าง (Ready) ทั้งหมด
       const { data: teams, error } = await supabase
@@ -46,9 +59,9 @@ class DispatcherService {
         return;
       }
 
-      // 2. คำนวณระยะทางและหาทีมที่ใกล้ที่สุด (ในรัศมี 5km)
+      // 2. คำนวณระยะทางและหาทีมที่ใกล้ที่สุด (ในรัศมี 50km)
       let nearestTeam = null;
-      let minDistance = 5; // ล็อครัศมีสูงสุดที่ 5 กิโลเมตร
+      let minDistance = 50; // ล็อครัศมีสูงสุดที่ 50 กิโลเมตร (ขยายสำหรับทดสอบและพื้นที่จริง)
 
       for (const team of teams) {
         if (!team.currentloclat || !team.currentloclng) {
@@ -76,7 +89,8 @@ class DispatcherService {
         // แนบข้อมูลระยะทางเข้าไปในข้อมูลงานด้วย เพื่อให้คนขับเห็นว่าห่างเท่าไหร่
         const jobPayload = {
             ...job,
-            reqdistance: minDistance.toFixed(2)
+            reqdistance: minDistance.toFixed(2),
+            job_source: type
         };
 
         const channel = supabase.channel(`team_room_${nearestTeam.buddyteamid}`);
