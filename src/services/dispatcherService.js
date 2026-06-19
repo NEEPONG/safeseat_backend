@@ -87,8 +87,10 @@ class DispatcherService {
               event: 'new_job_dispatched',
               payload: jobPayload
             });
-            // ถอดการเชื่อมต่อ channel หลังจากส่งเสร็จเพื่อไม่ให้เปลืองทรัพยากร
-            supabase.removeChannel(channel);
+            // ถอดการเชื่อมต่อ channel หลังจากส่งเสร็จเพื่อไม่ให้เปลืองทรัพยากร (ดีเลย์เล็กน้อยเพื่อให้แน่ใจว่าส่งข้อมูลเสร็จสิ้น)
+            setTimeout(() => {
+              supabase.removeChannel(channel);
+            }, 2000);
           }
         });
       } else {
