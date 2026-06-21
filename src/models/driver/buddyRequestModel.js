@@ -101,7 +101,7 @@ class BuddyRequestModel {
       console.error("Error setting driver buddy_team_id to null:", updateError);
     }
 
-    // 2. ลบประวัติการเดินทางในตาราง requestbyuser ที่อ้างอิงถึงทีมนี้ออก เพื่อหลีกเลี่ยง foreign key constraint
+    // 2. ลบประวัติการเดินทางในตาราง requestbyuser และ requestbypub ที่อ้างอิงถึงทีมนี้ออก เพื่อหลีกเลี่ยง foreign key constraint
     const { error: reqError } = await supabase
       .from('requestbyuser')
       .delete()
@@ -109,6 +109,15 @@ class BuddyRequestModel {
 
     if (reqError) {
       console.error("Error deleting requestbyuser referencing this team:", reqError);
+    }
+
+    const { error: pubReqError } = await supabase
+      .from('requestbypub')
+      .delete()
+      .eq('buddy_team_id', cleanId);
+
+    if (pubReqError) {
+      console.error("Error deleting requestbypub referencing this team:", pubReqError);
     }
 
     // 3. ลบแถวข้อมูลของทีมนี้ออกจากตาราง buddyteam ในฐานข้อมูลโดยสมบูรณ์
@@ -141,19 +150,23 @@ class BuddyRequestModel {
   }
 
   // 6. รับงาน (Accept Job)
-  static async acceptJob(requestId, buddyTeamId) {
+  static async acceptJob(requestId, buddyTeamId, isPubJob = false) {
     const cleanRequestId = parseInt(requestId, 10);
     const cleanBuddyTeamId = parseInt(buddyTeamId, 10);
+    
+    // Try primary table first, and fallback to secondary if not found
+    const primaryTable = isPubJob ? 'requestbypub' : 'requestbyuser';
+    const secondaryTable = isPubJob ? 'requestbyuser' : 'requestbypub';
 
     // 1. ตรวจสอบว่างานยังว่างอยู่ไหม และรับงาน (ลองค้นหาและอัปเดตจาก requestbyuser ก่อน)
     let { data: jobData, error: jobError } = await supabase
       .from('requestbyuser')
       .update({ 
         buddy_team_id: cleanBuddyTeamId, 
-        requeststatus: 'กำลังไปรับ' 
+        requeststatus: 'going to pickup' 
       })
       .eq('requestid', cleanRequestId)
-      .eq('requeststatus', 'pending') // การันตี Atomic Update
+      .in('requeststatus', ['pending', 'รอคนขับ']) // การันตี Atomic Update
       .select();
 
     if (jobError) throw jobError;
@@ -178,7 +191,7 @@ class BuddyRequestModel {
       throw new Error('งานนี้ถูกรับไปแล้วหรือหมดเวลา');
     }
 
-    // 2. ปรับสถานะทีมเป็น Busy
+    // 3. ปรับสถานะทีมเป็น Busy
     const { error: teamError } = await supabase
       .from('buddyteam')
       .update({ teamstatus: 'Busy' })

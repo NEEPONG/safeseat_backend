@@ -58,8 +58,9 @@ class BuddyRequestController {
 
   static async acceptJob(req, res) {
     try {
-      const { request_id, buddy_team_id } = req.body;
-      const job = await BuddyRequestModel.acceptJob(request_id, buddy_team_id);
+      const { request_id, buddy_team_id, is_pub_job, isPubJob } = req.body;
+      const isPub = (is_pub_job === true || isPubJob === true);
+      const job = await BuddyRequestModel.acceptJob(request_id, buddy_team_id, isPub);
       res.status(200).json({ success: true, message: 'รับงานสำเร็จ!', job });
     } catch (error) {
       console.error("Error accepting job:", error);
