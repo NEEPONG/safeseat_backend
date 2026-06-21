@@ -145,8 +145,8 @@ class BuddyRequestModel {
     const cleanRequestId = parseInt(requestId, 10);
     const cleanBuddyTeamId = parseInt(buddyTeamId, 10);
 
-    // 1. ตรวจสอบว่างานยังว่างอยู่ไหม และรับงาน
-    const { data: jobData, error: jobError } = await supabase
+    // 1. ตรวจสอบว่างานยังว่างอยู่ไหม และรับงาน (ลองค้นหาและอัปเดตจาก requestbyuser ก่อน)
+    let { data: jobData, error: jobError } = await supabase
       .from('requestbyuser')
       .update({ 
         buddy_team_id: cleanBuddyTeamId, 
@@ -157,6 +157,23 @@ class BuddyRequestModel {
       .select();
 
     if (jobError) throw jobError;
+
+    // 2. ถ้าไม่พบใน requestbyuser ให้ลองค้นหาและอัปเดตใน requestbypub
+    if (!jobData || jobData.length === 0) {
+      const { data: pubJobData, error: pubJobError } = await supabase
+        .from('requestbypub')
+        .update({
+          buddy_team_id: cleanBuddyTeamId,
+          requeststatus: 'กำลังไปรับ'
+        })
+        .eq('requestid', cleanRequestId)
+        .eq('requeststatus', 'รอคนขับ') // การันตี Atomic Update สำหรับฝั่งผับ
+        .select();
+
+      if (pubJobError) throw pubJobError;
+      jobData = pubJobData;
+    }
+
     if (!jobData || jobData.length === 0) {
       throw new Error('งานนี้ถูกรับไปแล้วหรือหมดเวลา');
     }
