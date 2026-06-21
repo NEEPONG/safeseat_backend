@@ -23,6 +23,8 @@ const upload = multer({ dest: 'uploads/' })
 // Import controller functions (เป็น async functions ที่จัดการ req/res)
 const { login, register, checkEmail, getStatus, getProfile } = require('../../controllers/pub/pub.controller')
 
+const { requestDriver, getServiceInfo, getServiceRequestById, simulateStep } = require('../../controllers/pub/service.controller')
+
 // ── Endpoints ─────────────────────────────────────────────────
 
 // POST /api/pub/login
@@ -55,5 +57,21 @@ router.get('/status/:username', getStatus)
 // Response: { success: true, data: pubProfileObject } (ไม่รวม password)
 // ใช้แสดงข้อมูล pub ทั้งหมดสำหรับ dashboard หรือ profile page
 router.get('/profile/:username', getProfile)
+
+// POST /api/pub/request-driver
+// Body: { pubUsername, custName, phoneNo, phoneEmer, carType, dropoffLatitude, dropoffLongitude, isLadyMode, note, paymentMethod }
+router.post('/request-driver', requestDriver)
+
+// GET /api/pub/service-info/:username
+// Params: username
+router.get('/service-info/:username', getServiceInfo)
+
+// GET /api/pub/service-request/:requestId
+// Params: requestId — ดึง request เดียวสำหรับ polling สถานะ (หน้า Waiting)
+router.get('/service-request/:requestId', getServiceRequestById)
+
+// POST /api/pub/service-request/:requestId/simulate-step
+// Body: { step } — จำลองขั้นตอนการเดินทาง
+router.post('/service-request/:requestId/simulate-step', simulateStep)
 
 module.exports = router

@@ -43,6 +43,10 @@ app.use('/api/user/request', userRequestRoute);
 const adminRoutes = require('./routes/admin/adminRoutes');
 app.use('/api/admin', adminRoutes);
 
+// Search routes (SerpApi / Nominatim)
+const searchRoutes = require('./routes/searchRoute');
+app.use('/api/search', searchRoutes);
+
 module.exports = app;
 
 

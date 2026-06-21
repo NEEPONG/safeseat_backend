@@ -158,12 +158,9 @@ class BuddyRequestModel {
     const primaryTable = isPubJob ? 'requestbypub' : 'requestbyuser';
     const secondaryTable = isPubJob ? 'requestbyuser' : 'requestbypub';
 
-    let jobData = null;
-    let jobError = null;
-
-    // 1. ตรวจสอบในตารางหลัก
-    const { data: primaryData, error: primaryError } = await supabase
-      .from(primaryTable)
+    // 1. ตรวจสอบว่างานยังว่างอยู่ไหม และรับงาน (ลองค้นหาและอัปเดตจาก requestbyuser ก่อน)
+    let { data: jobData, error: jobError } = await supabase
+      .from('requestbyuser')
       .update({ 
         buddy_team_id: cleanBuddyTeamId, 
         requeststatus: 'going to pickup' 
@@ -172,32 +169,24 @@ class BuddyRequestModel {
       .in('requeststatus', ['pending', 'รอคนขับ']) // การันตี Atomic Update
       .select();
 
-    if (primaryError) {
-      jobError = primaryError;
-    } else if (primaryData && primaryData.length > 0) {
-      jobData = primaryData;
-    }
+    if (jobError) throw jobError;
 
-    // 2. ถ้าไม่พบในตารางหลัก ลองหาในตารางรอง
+    // 2. ถ้าไม่พบใน requestbyuser ให้ลองค้นหาและอัปเดตใน requestbypub
     if (!jobData || jobData.length === 0) {
-      const { data: secondaryData, error: secondaryError } = await supabase
-        .from(secondaryTable)
-        .update({ 
-          buddy_team_id: cleanBuddyTeamId, 
-          requeststatus: 'going to pickup' 
+      const { data: pubJobData, error: pubJobError } = await supabase
+        .from('requestbypub')
+        .update({
+          buddy_team_id: cleanBuddyTeamId,
+          requeststatus: 'กำลังไปรับ'
         })
         .eq('requestid', cleanRequestId)
-        .in('requeststatus', ['pending', 'รอคนขับ'])
+        .eq('requeststatus', 'รอคนขับ') // การันตี Atomic Update สำหรับฝั่งผับ
         .select();
 
-      if (secondaryError) {
-        jobError = secondaryError;
-      } else if (secondaryData && secondaryData.length > 0) {
-        jobData = secondaryData;
-      }
+      if (pubJobError) throw pubJobError;
+      jobData = pubJobData;
     }
 
-    if (jobError && (!jobData || jobData.length === 0)) throw jobError;
     if (!jobData || jobData.length === 0) {
       throw new Error('งานนี้ถูกรับไปแล้วหรือหมดเวลา');
     }
