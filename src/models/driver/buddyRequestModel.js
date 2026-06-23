@@ -163,10 +163,10 @@ class BuddyRequestModel {
       .from('requestbyuser')
       .update({ 
         buddy_team_id: cleanBuddyTeamId, 
-        requeststatus: 'going to pickup' 
+        requeststatus: 'กำลังไปรับ' 
       })
       .eq('requestid', cleanRequestId)
-      .in('requeststatus', ['pending', 'รอคนขับ']) // การันตี Atomic Update
+      .eq('requeststatus', 'กำลังค้นหาคนขับ') // การันตี Atomic Update
       .select();
 
     if (jobError) throw jobError;

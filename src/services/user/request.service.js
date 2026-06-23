@@ -48,7 +48,7 @@ class RequestService {
             pickuplongitude: parseFloat(pickuplongitude),
             reqdistance: parseFloat(reqdistance),
             requestfee: parseFloat(requestfee),
-            requeststatus: 'pending',
+            requeststatus: 'กำลังค้นหาคนขับ',
             user_id: user_id,
             user_car_id: parseInt(user_car_id, 10),
         };
