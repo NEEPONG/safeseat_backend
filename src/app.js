@@ -6,6 +6,7 @@ const userRoutes = require('./routes/driver/userRoutes');
 const walletRoutes = require('./routes/driver/walletRoutes');
 const buddyRequestRoutes = require('./routes/driver/buddyRequestRoutes');
 const driverReportRoutes = require('./routes/driver/driverReportRoutes');
+const userReportRoutes = require('./routes/driver/userReportRoutes');
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/buddy-team', buddyRequestRoutes);
 app.use('/api/driver-reports', driverReportRoutes);
+app.use('/api/user-reports', userReportRoutes);
 
 // Pub routes
 const pubRoute = require('./routes/pub/pub.route');

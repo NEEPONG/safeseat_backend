@@ -166,7 +166,7 @@ class BuddyRequestModel {
       .from(primaryTable)
       .update({ 
         buddy_team_id: cleanBuddyTeamId, 
-        requeststatus: 'going to pickup' 
+        requeststatus: 'กำลังไปรับ' 
       })
       .eq('requestid', cleanRequestId)
       .in('requeststatus', ['pending', 'รอคนขับ']) // การันตี Atomic Update
@@ -184,7 +184,7 @@ class BuddyRequestModel {
         .from(secondaryTable)
         .update({ 
           buddy_team_id: cleanBuddyTeamId, 
-          requeststatus: 'going to pickup' 
+          requeststatus: 'กำลังไปรับ' 
         })
         .eq('requestid', cleanRequestId)
         .in('requeststatus', ['pending', 'รอคนขับ'])
@@ -211,6 +211,142 @@ class BuddyRequestModel {
     if (teamError) throw teamError;
 
     return jobData[0];
+  }
+
+  // 7. เสร็จสิ้นการเดินทางและแบ่งเงินค่าบริการ (Complete Job & Split Fee)
+  static async completeJob(requestId, buddyTeamId, isPubJob = false, evidenceImagePath = null) {
+    const cleanRequestId = parseInt(requestId, 10);
+    const cleanBuddyTeamId = parseInt(buddyTeamId, 10);
+
+    const primaryTable = isPubJob ? 'requestbypub' : 'requestbyuser';
+    const secondaryTable = isPubJob ? 'requestbyuser' : 'requestbypub';
+
+    // 1. Fetch request details to get the fee and verify
+    let requestData = null;
+    let requestError = null;
+    let tableUsed = primaryTable;
+
+    const { data: primaryReq, error: primaryErr } = await supabase
+      .from(primaryTable)
+      .select('*')
+      .eq('requestid', cleanRequestId)
+      .maybeSingle();
+
+    if (primaryErr) {
+      requestError = primaryErr;
+    } else if (primaryReq) {
+      requestData = primaryReq;
+      tableUsed = primaryTable;
+    }
+
+    if (!requestData) {
+      const { data: secondaryReq, error: secondaryErr } = await supabase
+        .from(secondaryTable)
+        .select('*')
+        .eq('requestid', cleanRequestId)
+        .maybeSingle();
+
+      if (secondaryErr) {
+        requestError = secondaryErr;
+      } else if (secondaryReq) {
+        requestData = secondaryReq;
+        tableUsed = secondaryTable;
+      }
+    }
+
+    if (requestError && !requestData) throw requestError;
+    if (!requestData) throw new Error('ไม่พบข้อมูลการเรียกรถ');
+
+    // If already completed, return early to prevent duplicate crediting
+    if (requestData.requeststatus === 'completed' || requestData.requeststatus === 'เสร็จสิ้น') {
+      return { message: 'งานนี้เสร็จสิ้นไปแล้ว', request: requestData };
+    }
+
+    // 2. Update request status to 'เสร็จสิ้น' and evidence picture path
+    const updatePayload = { requeststatus: 'เสร็จสิ้น' };
+    if (evidenceImagePath) {
+      updatePayload.finishjobpicpath = evidenceImagePath;
+    }
+
+    const { data: updatedReq, error: updateReqErr } = await supabase
+      .from(tableUsed)
+      .update(updatePayload)
+      .eq('requestid', cleanRequestId)
+      .select()
+      .maybeSingle();
+
+    if (updateReqErr) throw updateReqErr;
+
+    // 3. Update buddy team status to 'Ready'
+    const { error: teamError } = await supabase
+      .from('buddyteam')
+      .update({ teamstatus: 'Ready' })
+      .eq('buddyteamid', cleanBuddyTeamId);
+
+    if (teamError) {
+      console.error("Error setting buddy team to Ready:", teamError);
+    }
+
+    // 4. Split fee: SafeSeat takes 20%, each driver gets 40%
+    const requestFee = parseFloat(requestData.requestfee || 0);
+    const driverShare = parseFloat((requestFee * 0.40).toFixed(2));
+
+    if (driverShare > 0) {
+      // Get the team members (leader and follower)
+      const { data: team, error: teamGetError } = await supabase
+        .from('buddyteam')
+        .select('leaderid, followerid')
+        .eq('buddyteamid', cleanBuddyTeamId)
+        .maybeSingle();
+
+      if (teamGetError) {
+        console.error("Error fetching team drivers:", teamGetError);
+      } else if (team) {
+        const drivers = [team.leaderid, team.followerid].filter(Boolean);
+
+        for (const driverUsername of drivers) {
+          try {
+            // Get current wallet balance
+            const { data: driverInfo, error: driverGetErr } = await supabase
+              .from('driver')
+              .select('walletbalance')
+              .eq('username', driverUsername)
+              .maybeSingle();
+
+            if (driverGetErr) throw driverGetErr;
+
+            const currentBalance = parseFloat(driverInfo?.walletbalance || 0);
+            const newBalance = parseFloat((currentBalance + driverShare).toFixed(2));
+
+            // Update driver wallet balance
+            const { error: driverUpdateErr } = await supabase
+              .from('driver')
+              .update({ walletbalance: newBalance })
+              .eq('username', driverUsername);
+
+            if (driverUpdateErr) throw driverUpdateErr;
+
+            // Insert transaction record
+            const { error: txError } = await supabase
+              .from('driverwallettransaction')
+              .insert({
+                driver_id: driverUsername,
+                amount: driverShare,
+                trantype: 'service fee',
+                transtatus: 'Success'
+              });
+
+            if (txError) throw txError;
+
+            console.log(`Successfully credited ${driverShare} to driver ${driverUsername}. New balance: ${newBalance}`);
+          } catch (err) {
+            console.error(`Failed to credit wallet for driver ${driverUsername}:`, err);
+          }
+        }
+      }
+    }
+
+    return { message: 'เสร็จสิ้นงานและจ่ายค่าบริการเรียบร้อย', request: updatedReq };
   }
 }
 
