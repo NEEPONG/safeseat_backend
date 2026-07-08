@@ -97,7 +97,7 @@ class AdminController {
       const { count: userReportPending } = await supabase
         .from('userreport')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'กำลังดำเนินการ');
+        .eq('reportstatus', 'กำลังดำเนินการ');
 
       return res.status(200).json({
         success: true,
@@ -322,7 +322,7 @@ class AdminController {
 
       const { data, error } = await supabase
         .from('userreport')
-        .update({ status })
+        .update({ reportstatus: status })
         .eq('userreportid', id)
         .select()
         .maybeSingle();

@@ -154,7 +154,67 @@ const getServiceRequestById = async (req, res) => {
       return res.status(400).json({ success: false, message: 'กรุณาระบุ requestId' })
     }
 
-    const data = await findServiceRequestById(requestId)
+    let data = null
+    try {
+      data = await findServiceRequestById(requestId)
+      if (data) {
+        data.requestType = 'pub'
+      }
+    } catch (e) {
+      // ไม่พบในตาราง requestbypub, ลองหาในตาราง requestbyuser แทน
+    }
+
+    if (!data) {
+      const { data: userReq, error: userReqErr } = await supabase
+        .from('requestbyuser')
+        .select('*')
+        .eq('requestid', parseInt(requestId, 10))
+        .maybeSingle()
+
+      if (userReqErr) {
+        console.error('Error fetching requestbyuser:', userReqErr)
+      }
+
+      if (userReq) {
+        // ดึงชื่อโปรไฟล์ของลูกค้าจากตาราง User เพื่อนำมาจำลองเป็น custname
+        let custName = 'ลูกค้า SafeSeat'
+        try {
+          const { data: userProfile } = await supabase
+            .from('User')
+            .select('name')
+            .eq('phoneno', userReq.user_id)
+            .maybeSingle()
+          if (userProfile && userProfile.name) {
+            custName = userProfile.name
+          }
+        } catch (errProfile) {
+          console.warn("Could not load user name for requestbyuser fallback", errProfile)
+        }
+
+        // แปลงฟิลด์ของ requestbyuser ให้ตรงกับโครงสร้างที่หน้าเว็บคาดหวังจาก requestbypub
+        data = {
+          requestid: userReq.requestid,
+          custname: custName,
+          phoneno: userReq.user_id,
+          phoneemer: '',
+          note: userReq.note || '',
+          isladymode: userReq.isladymode,
+          paymentmethod: userReq.paymentmethod,
+          requeststatus: userReq.requeststatus,
+          reqdatetime: userReq.created_at || new Date().toISOString(),
+          requiredcartype: 3, // ค่า Default เป็น Auto
+          pickuplatitude: userReq.pickuplatitude,
+          pickuplongitude: userReq.pickuplongitude,
+          dropofflatitude: userReq.dropofflatitude,
+          dropofflongitude: userReq.dropofflongitude,
+          requestfee: userReq.requestfee,
+          reqdistance: userReq.reqdistance,
+          buddy_team_id: userReq.buddy_team_id,
+          requestType: 'user'
+        }
+      }
+    }
+
     if (!data) {
       return res.status(404).json({ success: false, message: 'ไม่พบข้อมูล request' })
     }
@@ -168,21 +228,38 @@ const getServiceRequestById = async (req, res) => {
         .maybeSingle();
       data.buddyteam = team;
 
-      if (team) {
         // ดึงโปรไฟล์หัวหน้าทีมและผู้ช่วย
-        const { data: leader } = await supabase
+        const { data: leaderRow } = await supabase
           .from('driver')
-          .select('username, firstname, lastname, phone_no, license_plate')
+          .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
           .eq('username', team.leaderid)
           .maybeSingle();
-        const { data: follower } = await supabase
+        const { data: followerRow } = await supabase
           .from('driver')
-          .select('username, firstname, lastname, phone_no')
+          .select('username, firstname, lastname, phoneno')
           .eq('username', team.followerid)
           .maybeSingle();
-        data.leader = leader;
-        data.follower = follower;
-      }
+
+        if (leaderRow) {
+          data.leader = {
+            firstname: leaderRow.firstname,
+            lastname: leaderRow.lastname,
+            phone_no: leaderRow.phoneno,
+            license_plate: leaderRow.drivercar?.carplate || '—'
+          };
+        } else {
+          data.leader = null;
+        }
+
+        if (followerRow) {
+          data.follower = {
+            firstname: followerRow.firstname,
+            lastname: followerRow.lastname,
+            phone_no: followerRow.phoneno
+          };
+        } else {
+          data.follower = null;
+        }
     }
 
     return res.status(200).json({ success: true, data })

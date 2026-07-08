@@ -99,18 +99,37 @@ class RequestService {
 
             if (team) {
                 // Fetch leader and follower driver profiles
-                const { data: leader } = await supabase
+                const { data: leaderRow } = await supabase
                     .from('driver')
-                    .select('username, firstname, lastname, phone_no, license_plate')
+                    .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
                     .eq('username', team.leaderid)
                     .maybeSingle();
-                const { data: follower } = await supabase
+                const { data: followerRow } = await supabase
                     .from('driver')
-                    .select('username, firstname, lastname, phone_no')
+                    .select('username, firstname, lastname, phoneno')
                     .eq('username', team.followerid)
                     .maybeSingle();
-                request.leader = leader;
-                request.follower = follower;
+
+                if (leaderRow) {
+                    request.leader = {
+                        firstname: leaderRow.firstname,
+                        lastname: leaderRow.lastname,
+                        phone_no: leaderRow.phoneno,
+                        license_plate: leaderRow.drivercar?.carplate || '—'
+                    };
+                } else {
+                    request.leader = null;
+                }
+
+                if (followerRow) {
+                    request.follower = {
+                        firstname: followerRow.firstname,
+                        lastname: followerRow.lastname,
+                        phone_no: followerRow.phoneno
+                    };
+                } else {
+                    request.follower = null;
+                }
             }
         }
 
