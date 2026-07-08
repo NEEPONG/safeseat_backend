@@ -101,14 +101,25 @@ class RequestService {
                 // Fetch leader and follower driver profiles
                 const { data: leader } = await supabase
                     .from('driver')
-                    .select('username, firstname, lastname, phone_no, license_plate')
+                    .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
                     .eq('username', team.leaderid)
                     .maybeSingle();
+                
+                if (leader) {
+                    leader.phone_no = leader.phoneno;
+                    leader.license_plate = leader.drivercar ? leader.drivercar.carplate : null;
+                }
+
                 const { data: follower } = await supabase
                     .from('driver')
-                    .select('username, firstname, lastname, phone_no')
+                    .select('username, firstname, lastname, phoneno')
                     .eq('username', team.followerid)
                     .maybeSingle();
+
+                if (follower) {
+                    follower.phone_no = follower.phoneno;
+                }
+
                 request.leader = leader;
                 request.follower = follower;
             }
@@ -118,20 +129,98 @@ class RequestService {
     }
 
     /**
-     * Cancel (delete) a user request.
+     * Cancel (update status to 'ยกเลิก') a user request.
      * @param {string|number} id Request ID
      * @returns {Promise<object>} Cancelled data
      */
     static async cancelRequest(id) {
         const { data, error } = await supabase
             .from('requestbyuser')
-            .delete()
+            .update({ requeststatus: 'ยกเลิก' })
             .eq('requestid', parseInt(id, 10))
             .select();
 
         if (error) {
             console.error("Error canceling request:", error);
             throw new Error(error.message);
+        }
+
+        return data;
+    }
+
+    /**
+     * Get requests for a user filtered by type.
+     * @param {string} userId
+     * @param {string} type ('active' | 'completed' | 'cancelled')
+     * @returns {Promise<Array>} List of requests
+     */
+    static async getRequestsByUser(userId, type) {
+        if (!userId) {
+            throw new Error('Please provide user_id');
+        }
+
+        let statuses = [];
+        if (type === 'active') {
+            statuses = ['รอคนขับ', 'กำลังค้นหาคนขับ', 'กำลังไปรับ', 'ถึงจุดนัดหมาย', 'กำลังเดินทาง'];
+        } else if (type === 'completed') {
+            statuses = ['เสร็จสิ้น'];
+        } else if (type === 'cancelled') {
+            statuses = ['ยกเลิก'];
+        } else {
+            throw new Error('Invalid request type');
+        }
+
+        const { data, error } = await supabase
+            .from('requestbyuser')
+            .select(`
+                *,
+                buddyteam (
+                    buddyteamid,
+                    leaderid,
+                    followerid
+                ),
+                usercar (
+                    usercarid,
+                    carbrand,
+                    carmodel,
+                    carplate,
+                    carcolor
+                )
+            `)
+            .eq('user_id', userId)
+            .in('requeststatus', statuses)
+            .order('reqdatetime', { ascending: false });
+
+        if (error) {
+            console.error("Error fetching requests for user:", error);
+            throw new Error(error.message);
+        }
+
+        // Load driver details if buddy team is assigned
+        if (data && data.length > 0) {
+            for (const request of data) {
+                if (request.buddy_team_id && request.buddyteam) {
+                    const { data: leader } = await supabase
+                        .from('driver')
+                        .select('username, firstname, lastname, phoneno')
+                        .eq('username', request.buddyteam.leaderid)
+                        .maybeSingle();
+                    if (leader) {
+                        leader.phone_no = leader.phoneno;
+                    }
+                    request.leader = leader;
+
+                    const { data: follower } = await supabase
+                        .from('driver')
+                        .select('username, firstname, lastname, phoneno')
+                        .eq('username', request.buddyteam.followerid)
+                        .maybeSingle();
+                    if (follower) {
+                        follower.phone_no = follower.phoneno;
+                    }
+                    request.follower = follower;
+                }
+            }
         }
 
         return data;

@@ -41,6 +41,10 @@ app.use('/api/user/location', userLocationRoute);
 const userRequestRoute = require('./routes/user/request.route');
 app.use('/api/user/request', userRequestRoute);
 
+// User review route
+const userReviewRoute = require('./routes/user/review.route');
+app.use('/api/user/review', userReviewRoute);
+
 // Admin routes
 const adminRoutes = require('./routes/admin/adminRoutes');
 app.use('/api/admin', adminRoutes);
