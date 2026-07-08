@@ -36,36 +36,41 @@ class DriverReportModel {
 
   // Fetch reports for a specific driver / username
   static async getReportsByDriver(username) {
-    const allReports = await this.getAllReports();
-    if (!username) return allReports;
-
-    // Fetch the driver's profile to get their buddy_team_id
-    const UserModel = require('./userModel');
-    let driverBuddyTeamId = null;
-    try {
-      const driver = await UserModel.getProfileByUsername(username);
-      driverBuddyTeamId = driver ? driver.buddy_team_id : null;
-    } catch (e) {
-      console.error("Error fetching driver profile in getReportsByDriver:", e);
-    }
+    if (!username) return [];
 
     const u = username.toLowerCase();
 
-    // Filter reports in-memory to be highly resilient to schema variations in 'requestbyuser'
-    return allReports.filter(report => {
-      // If we don't have request details, keep it in the list (or we can match on other fields)
-      if (!report.requestbyuser) {
-        return true; 
-      }
+    // 1. ดึงข้อมูลทีมบัดดี้ทั้งหมดในระบบที่คนขับคนนี้เคยเข้าร่วม (ทั้ง leader และ follower)
+    let teamIds = [];
+    try {
+      const { data: teams, error: teamsError } = await supabase
+        .from('buddyteam')
+        .select('buddyteamid')
+        .or(`leaderid.ilike.${u},followerid.ilike.${u}`);
       
-      const req = report.requestbyuser;
+      if (!teamsError && teams) {
+        teamIds = teams.map(t => t.buddyteamid);
+      }
+    } catch (e) {
+      console.error("Error fetching historical buddy teams in getReportsByDriver:", e);
+    }
 
-      // Check if request belongs to the driver's buddy team
-      if (driverBuddyTeamId && req.buddy_team_id === driverBuddyTeamId) {
+    // 2. ดึงรายงานทั้งหมดพร้อม Join ตาราง requestbyuser
+    const allReports = await this.getAllReports();
+
+    // 3. กรองรายงานที่เกี่ยวข้องกับคนขับคนนี้จริงๆ
+    return allReports.filter(report => {
+      const req = report.requestbyuser;
+      if (!req) {
+        return false;
+      }
+
+      // ตรวจสอบจากประวัติทีมบัดดี้ของคนขับคนนี้ (รวมถึงทีมเก่าๆ ที่เคยอยู่ด้วย)
+      if (req.buddy_team_id && teamIds.includes(req.buddy_team_id)) {
         return true;
       }
 
-      // Check common driver identifying fields in booking/request
+      // ตรวจสอบความเชื่อมโยงผ่าน username / driver_username ใน requestbyuser
       const isDriver = 
         (req.driver_username && req.driver_username.toLowerCase() === u) ||
         (req.driver_id && req.driver_id.toString().toLowerCase() === u) ||

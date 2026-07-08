@@ -33,6 +33,41 @@ class UserModel {
     if (error) {
       throw error;
     }
+
+    if (data) {
+      const { data: reviews, error: reviewError } = await supabase
+        .from('review')
+        .select('*')
+        .eq('driverusername', data.username);
+
+      if (!reviewError && reviews) {
+        const count = reviews.length;
+        let sum = 0;
+        const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+        reviews.forEach(r => {
+          const rate = r.reviewrate;
+          sum += rate;
+          if (distribution[rate] !== undefined) {
+            distribution[rate]++;
+          }
+        });
+        const average = count > 0 ? parseFloat((sum / count).toFixed(2)) : 0.0;
+        data.review_stats = {
+          count,
+          average,
+          distribution
+        };
+        data.reviews = reviews;
+      } else {
+        data.review_stats = {
+          count: 0,
+          average: 0.0,
+          distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+        };
+        data.reviews = [];
+      }
+    }
+
     return formatCarImagePath(formatDriverDocs(data));
   }
 

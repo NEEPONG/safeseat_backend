@@ -87,7 +87,7 @@ class BuddyRequestModel {
     return data;
   }
 
-  // 4. ปฏิเสธหรือลบคำขอ
+  // 4. ปฏิเสธหรือยกเลิกทีม (เปลี่ยนสถานะเป็น 'ยกเลิกทีม')
   static async removeRequest(requestId) {
     const cleanId = parseInt(requestId, 10) || requestId;
     
@@ -101,33 +101,14 @@ class BuddyRequestModel {
       console.error("Error setting driver buddy_team_id to null:", updateError);
     }
 
-    // 2. ลบประวัติการเดินทางในตาราง requestbyuser และ requestbypub ที่อ้างอิงถึงทีมนี้ออก เพื่อหลีกเลี่ยง foreign key constraint
-    const { error: reqError } = await supabase
-      .from('requestbyuser')
-      .delete()
-      .eq('buddy_team_id', cleanId);
-
-    if (reqError) {
-      console.error("Error deleting requestbyuser referencing this team:", reqError);
-    }
-
-    const { error: pubReqError } = await supabase
-      .from('requestbypub')
-      .delete()
-      .eq('buddy_team_id', cleanId);
-
-    if (pubReqError) {
-      console.error("Error deleting requestbypub referencing this team:", pubReqError);
-    }
-
-    // 3. ลบแถวข้อมูลของทีมนี้ออกจากตาราง buddyteam ในฐานข้อมูลโดยสมบูรณ์
+    // 2. อัปเดตสถานะของทีมในตาราง buddyteam เป็น 'ยกเลิกทีม' แทนการลบข้อมูล
     const { error } = await supabase
       .from('buddyteam')
-      .delete()
+      .update({ teamstatus: 'ยกเลิกทีม' })
       .eq('buddyteamid', cleanId);
 
     if (error) throw error;
-    return { message: 'Deleted' };
+    return { message: 'Cancelled' };
   }
 
   // 5. ดูคู่หูปัจจุบัน
