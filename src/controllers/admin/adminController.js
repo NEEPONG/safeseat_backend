@@ -87,7 +87,7 @@ class AdminController {
       const { count: driverReportPending } = await supabase
         .from('driverreport')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'กำลังดำเนินการ');
+        .eq('reportstatus', 'กำลังดำเนินการ');
 
       // 4. สถิติรายงานลูกค้า / ผู้ใช้
       const { count: userReportAll } = await supabase
@@ -291,7 +291,7 @@ class AdminController {
 
       const { data, error } = await supabase
         .from('driverreport')
-        .update({ status })
+        .update({ reportstatus: status })
         .eq('driverreportid', id)
         .select()
         .maybeSingle();
