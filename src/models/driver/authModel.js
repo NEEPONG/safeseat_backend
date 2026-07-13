@@ -16,7 +16,7 @@ class AuthModel {
     const isMatch = await bcrypt.compare(password, data.password);
     if (!isMatch) return null;
 
-    // If login is successful and location is provided, update the location
+    // หากเข้าสู่ระบบสำเร็จและมีการส่งพิกัดละติจูด/ลองจิจูดมา ให้ทำการอัปเดตตำแหน่งคนขับ
     if (data && latitude !== undefined && longitude !== undefined) {
       const { data: updatedData, error: updateError } = await supabase
         .from('driver')
@@ -33,7 +33,7 @@ class AuthModel {
     return formatDriverDocs(data);
   }
 
-  // Check if username already exists
+  // ตรวจสอบว่ามี username นี้อยู่ในระบบแล้วหรือยัง
   static async checkDuplicateUsername(username) {
     const { data, error } = await supabase
       .from('driver')
@@ -45,7 +45,7 @@ class AuthModel {
     return !!data;
   }
 
-  // Get registration status for driver
+  // ดึงสถานะการสมัครสมาชิกของคนขับ
   static async getStatus(username) {
     const { data, error } = await supabase
       .from('driver')
@@ -57,7 +57,7 @@ class AuthModel {
     return data;
   }
 
-  // Check if email already exists
+  // ตรวจสอบว่ามีอีเมลนี้อยู่ในระบบแล้วหรือยัง
   static async checkDuplicateEmail(email) {
     const { data, error } = await supabase
       .from('driver')
@@ -69,7 +69,7 @@ class AuthModel {
     return !!data;
   }
 
-  // Check if phone number already exists
+  // ตรวจสอบว่ามีเบอร์โทรศัพท์นี้อยู่ในระบบแล้วหรือยัง
   static async checkDuplicatePhone(phoneno) {
     const { data, error } = await supabase
       .from('driver')
@@ -81,7 +81,7 @@ class AuthModel {
     return !!data;
   }
 
-  // Check if ID card already exists
+  // ตรวจสอบว่ามีเลขบัตรประชาชนนี้อยู่ในระบบแล้วหรือยัง
   static async checkDuplicateIdCard(idcard) {
     const { data, error } = await supabase
       .from('driver')
@@ -93,9 +93,9 @@ class AuthModel {
     return !!data;
   }
 
-  // Register driver and their car
+  // สมัครสมาชิกคนขับพร้อมทั้งลงทะเบียนข้อมูลรถยนต์
   static async register(driverData, carData) {
-    // 1. Insert car information first
+    // 1. เพิ่มข้อมูลรถยนต์ของคนขับก่อน
     const { data: insertedCar, error: carError } = await supabase
       .from('drivercar')
       .insert([carData])
@@ -111,7 +111,7 @@ class AuthModel {
       throw new Error("เกิดข้อผิดพลาดในการบันทึกข้อมูลรถยนต์");
     }
 
-    // 2. Insert driver information, linking to the newly inserted car ID
+    // 2. เพิ่มข้อมูลคนขับโดยเชื่อมโยงไอดีรถยนต์ที่เพิ่งเพิ่มเข้าไป
     const driverRecord = {
       ...driverData,
       driver_car: insertedCar.drivercarid
@@ -125,7 +125,7 @@ class AuthModel {
 
     if (driverError) {
       console.error("Error inserting driver:", driverError);
-      // Attempt to clean up the inserted car to maintain data integrity
+      // พยายามลบข้อมูลรถยนต์ที่เพิ่งเพิ่มเข้าไปเพื่อป้องกันข้อมูลขยะหากการสมัครสมาชิกคนขับล้มเหลว
       try {
         await supabase
           .from('drivercar')

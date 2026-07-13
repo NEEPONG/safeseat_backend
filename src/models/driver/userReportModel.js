@@ -1,7 +1,7 @@
 const supabase = require('./dbClient');
 
 class UserReportModel {
-  // Create a new report on a user
+  // สร้างรายงานข้อร้องเรียนเกี่ยวกับลูกค้า
   static async createReport(reportData) {
     const { data, error } = await supabase
       .from('userreport')
@@ -13,7 +13,7 @@ class UserReportModel {
     return data;
   }
 
-  // Get all user reports
+  // ดึงรายงานข้อมูลข้อร้องเรียนลูกค้าทั้งหมด
   static async getAllReports() {
     const { data, error } = await supabase
       .from('userreport')

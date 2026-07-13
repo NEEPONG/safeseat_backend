@@ -1,10 +1,10 @@
 const supabase = require('./dbClient');
 
 class DriverReportModel {
-  // Fetch all reports
+  // ดึงข้อมูลรายงานทั้งหมด
   static async getAllReports() {
     try {
-      // Attempt join query
+      // พยายามดึงข้อมูลแบบ Join ตาราง
       const { data, error } = await supabase
         .from('driverreport')
         .select('*, requestbyuser(*)')
@@ -12,7 +12,7 @@ class DriverReportModel {
 
       if (error) {
         console.warn("Join with requestbyuser failed, falling back to direct select:", error.message);
-        // Fallback to direct query
+        // หาก Join ล้มเหลว ให้ดึงข้อมูลตรงจากตารางหลักโดยไม่ Join
         const { data: fallbackData, error: fallbackError } = await supabase
           .from('driverreport')
           .select('*')
@@ -24,7 +24,7 @@ class DriverReportModel {
       return data;
     } catch (e) {
       console.error("Error in getAllReports:", e);
-      // Absolute fallback
+      // กรณีเกิดข้อผิดพลาดระดับร้ายแรง ให้ดึงข้อมูลทั้งหมดกลับไปเป็นแบบสำรองสุด
       const { data, error } = await supabase
         .from('driverreport')
         .select('*')
@@ -34,7 +34,7 @@ class DriverReportModel {
     }
   }
 
-  // Fetch reports for a specific driver / username
+  // ดึงรายงานของคนขับแต่ละคนโดยระบุ username
   static async getReportsByDriver(username) {
     if (!username) return [];
 
@@ -82,7 +82,7 @@ class DriverReportModel {
     });
   }
 
-  // Create a new report
+  // สร้างรายงานใหม่
   static async createReport(reportData) {
     const { data, error } = await supabase
       .from('driverreport')

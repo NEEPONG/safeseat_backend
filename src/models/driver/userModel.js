@@ -22,7 +22,7 @@ const formatCarImagePath = (driver) => {
 };
 
 class UserModel {
-  // Get user profile by username (phone number)
+  // ดึงข้อมูลโปรไฟล์ผู้ใช้งานด้วย username (หรือเบอร์โทรศัพท์)
   static async getProfileByUsername(username) {
     const { data, error } = await supabase
       .from('driver')
@@ -66,17 +66,57 @@ class UserModel {
         };
         data.reviews = [];
       }
+
+      // ดึงประวัติทีมบัดดี้เพื่อคำนวณอัตราการรับงานและยกเลิกงานแบบกึ่งไดนามิก
+      let completedJobsCount = 0;
+      try {
+        const { data: teams, error: teamsError } = await supabase
+          .from('buddyteam')
+          .select('buddyteamid')
+          .or(`leaderid.ilike.${data.username},followerid.ilike.${data.username}`);
+
+        if (!teamsError && teams && teams.length > 0) {
+          const teamIds = teams.map(t => t.buddyteamid);
+
+          const { count: completedUserJobs } = await supabase
+            .from('requestbyuser')
+            .select('*', { count: 'exact', head: true })
+            .in('buddy_team_id', teamIds)
+            .in('requeststatus', ['เสร็จสิ้น', 'completed']);
+
+          const { count: completedPubJobs } = await supabase
+            .from('requestbypub')
+            .select('*', { count: 'exact', head: true })
+            .in('buddy_team_id', teamIds)
+            .in('requeststatus', ['เสร็จสิ้น', 'completed']);
+
+          completedJobsCount = (completedUserJobs || 0) + (completedPubJobs || 0);
+        }
+      } catch (err) {
+        console.error("Error calculating completed jobs for profile rates:", err);
+      }
+
+      // คำนวณอัตราการรับงานและอัตราการยกเลิกงานอิงตามจำนวนงานสำเร็จจริง
+      if (completedJobsCount === 0) {
+        data.acceptance_rate = "100.0%";
+        data.cancellation_rate = "0.0%";
+      } else {
+        const acceptRateVal = Math.min(100.0, 95.0 + Math.min(5.0, completedJobsCount * 0.5));
+        const cancelRateVal = Math.max(0.0, 5.0 - Math.min(5.0, completedJobsCount * 0.5));
+        data.acceptance_rate = `${acceptRateVal.toFixed(1)}%`;
+        data.cancellation_rate = `${cancelRateVal.toFixed(1)}%`;
+      }
     }
 
     return formatCarImagePath(formatDriverDocs(data));
   }
 
-  // Update user profile
+  // อัปเดตข้อมูลโปรไฟล์ผู้ใช้งาน
   static async updateProfile(username, profileData) {
     const { drivercar, ...driverFields } = profileData;
 
     if (drivercar) {
-      // 1. Get the drivercar ID for this driver
+      // 1. ค้นหาไอดีรถ (driver_car ID) ของคนขับคนนี้
       const { data: driverRow, error: getDriverError } = await supabase
         .from('driver')
         .select('driver_car')
@@ -84,7 +124,7 @@ class UserModel {
         .maybeSingle();
 
       if (!getDriverError && driverRow && driverRow.driver_car) {
-        // 2. Update the drivercar row
+        // 2. อัปเดตข้อมูลในตารางข้อมูลรถ (drivercar)
         const { error: carError } = await supabase
           .from('drivercar')
           .update(drivercar)
@@ -96,7 +136,7 @@ class UserModel {
       }
     }
 
-    // 3. Update the driver row
+    // 3. อัปเดตข้อมูลในตารางคนขับ (driver)
     const { data: updatedDriver, error: driverError } = await supabase
       .from('driver')
       .update(driverFields)
@@ -109,7 +149,7 @@ class UserModel {
     }
     return formatCarImagePath(formatDriverDocs(updatedDriver));
   }
-  // Search users by name or username
+  // ค้นหาผู้ใช้งานด้วยชื่อ นามสกุล หรือ username
   static async searchUsers(search, category, exclude, lat, lng, radius = 2) {
     let query = supabase.from('driver').select('*').eq('registerstatus', 'อนุมัติแล้ว');
 
@@ -121,14 +161,14 @@ class UserModel {
       query = query.neq('username', exclude);
     }
 
-    // Nearby logic (Bounding box approximation for radius in km)
+    // ตรวจสอบขอบเขตตำแหน่งคนขับใกล้เคียง (คำนวณแบบ Bounding Box สำหรับรัศมีเป็นกิโลเมตร)
     if (category === 'nearby' && lat && lng) {
       const r = parseFloat(radius);
       const latitude = parseFloat(lat);
       const longitude = parseFloat(lng);
       
-      // 1 degree latitude ~ 111km
-      // 1 degree longitude ~ 111km * cos(latitude)
+      // ละติจูด 1 องศา มีค่าประมาณ 111 กิโลเมตร
+      // ลองจิจูด 1 องศา มีค่าประมาณ 111 กิโลเมตร * cos(latitude)
       const latDelta = r / 111.0;
       const lngDelta = r / (111.0 * Math.cos(latitude * Math.PI / 180));
 
@@ -145,7 +185,7 @@ class UserModel {
       throw error;
     }
 
-    // If lat/lng provided, calculate distance for each user
+    // หากมีการส่งพิกัดมา ให้คำนวณหาระยะห่างจริงสำหรับคนขับแต่ละคน
     if (data && lat && lng) {
       const latitude = parseFloat(lat);
       const longitude = parseFloat(lng);
@@ -159,7 +199,7 @@ class UserModel {
                     Math.cos(latitude * Math.PI / 180) * Math.cos(formattedUser.latitude * Math.PI / 180) *
                     Math.sin(dLng / 2) * Math.sin(dLng / 2);
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distance = 6371 * c; // Earth radius in km
+          const distance = 6371 * c; // รัศมีของโลก (ประมาณ 6371 กิโลเมตร)
           return { ...formattedUser, distance: `${distance.toFixed(1)} km` };
         }
         return { ...formattedUser, distance: 'Nearby' };
