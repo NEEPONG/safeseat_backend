@@ -202,17 +202,17 @@ class AuthController {
       const trainingCert3Path = await uploadToSupabase(req.files.trainingCert3Path[0], 'images', 'drivers/documents');
       const trainingCert4Path = await uploadToSupabase(req.files.trainingCert4Path[0], 'images', 'drivers/documents');
 
-      // Pack all driver documents into a single JSON string for the 'regisimagepath' column (compressed array format to fit under 255 chars)
-      const regisImagePathJson = JSON.stringify([
-        compressPath(getRelativePath(regisImagePath)),
-        compressPath(getRelativePath(driverLicensePath)),
-        compressPath(getRelativePath(criminalRecordPath)),
-        compressPath(getRelativePath(medicalCertificatePath)),
-        compressPath(getRelativePath(trainingCert1Path)),
-        compressPath(getRelativePath(trainingCert2Path)),
-        compressPath(getRelativePath(trainingCert3Path)),
-        compressPath(getRelativePath(trainingCert4Path))
-      ]);
+      // Pack all driver documents into a single JSON object string for the 'regisimagepath' column using full Supabase URLs
+      const regisImagePathJson = JSON.stringify({
+        profile: regisImagePath,
+        driverLicense: driverLicensePath,
+        criminalRecord: criminalRecordPath,
+        medicalCertificate: medicalCertificatePath,
+        trainingCert1: trainingCert1Path,
+        trainingCert2: trainingCert2Path,
+        trainingCert3: trainingCert3Path,
+        trainingCert4: trainingCert4Path
+      });
 
       // Prepare database records
       const salt = await bcrypt.genSalt(10);
