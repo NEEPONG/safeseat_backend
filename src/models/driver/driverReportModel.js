@@ -27,6 +27,38 @@ class DriverReportModel {
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
+
+      // Populate buddyteam and drivers for each request
+      if (data && data.length > 0) {
+        for (const report of data) {
+          const req = report.requestbyuser;
+          if (req && req.buddy_team_id) {
+            const { data: team } = await supabase
+              .from('buddyteam')
+              .select('*')
+              .eq('buddyteamid', req.buddy_team_id)
+              .maybeSingle();
+            req.buddyteam = team;
+
+            if (team) {
+              const { data: leader } = await supabase
+                .from('driver')
+                .select('username, firstname, lastname, phoneno, regisimagepath')
+                .eq('username', team.leaderid)
+                .maybeSingle();
+              const { data: follower } = await supabase
+                .from('driver')
+                .select('username, firstname, lastname, phoneno, regisimagepath')
+                .eq('username', team.followerid)
+                .maybeSingle();
+
+              req.leader = leader;
+              req.follower = follower;
+            }
+          }
+        }
+      }
+
       return data;
     } catch (e) {
       console.error("Error in getAllReports:", e);
@@ -93,6 +125,17 @@ class DriverReportModel {
     });
   }
 
+  // Fetch reports submitted by a specific user (phone number)
+  static async getReportsByUser(userId) {
+    const allReports = await this.getAllReports();
+    if (!userId) return allReports;
+
+    return allReports.filter(report => {
+      return report.requestbyuser && report.requestbyuser.user_id === userId;
+    });
+  }
+
+  // Create a new report
   // สร้างรายงานใหม่
   static async createReport(reportData) {
     const { data, error } = await supabase

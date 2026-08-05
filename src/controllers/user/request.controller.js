@@ -47,6 +47,21 @@ class RequestController {
       return res.status(500).json({ error: error.message || 'Internal server error' });
     }
   }
+
+  // GET /api/user/request/user/:userId
+  static async getRequestsByUser(req, res) {
+    try {
+      const { userId } = req.params;
+      const { type } = req.query; // 'active' | 'completed' | 'cancelled'
+      const data = await RequestService.getRequestsByUser(userId, type);
+      return res.status(200).json({
+        requests: data
+      });
+    } catch (error) {
+      console.error("Error in getRequestsByUser:", error);
+      return res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  }
 }
 
 module.exports = RequestController;
