@@ -54,7 +54,7 @@ class BuddyRequestModel {
       .maybeSingle();
 
     if (getError) throw getError;
-    if (!team) throw new Error("Buddy team request not found");
+    if (!team) throw new Error("ไม่พบคำขอทีมบัดดี้");
 
     // 2. อัปเดตสถานะทีมเป็น Ready
     const { data, error } = await supabase
@@ -87,7 +87,7 @@ class BuddyRequestModel {
     return data;
   }
 
-  // 4. ปฏิเสธหรือลบคำขอ
+  // 4. ปฏิเสธหรือยกเลิกทีม (เปลี่ยนสถานะเป็น 'ยกเลิกทีม')
   static async removeRequest(requestId) {
     const cleanId = parseInt(requestId, 10) || requestId;
     
@@ -101,33 +101,14 @@ class BuddyRequestModel {
       console.error("Error setting driver buddy_team_id to null:", updateError);
     }
 
-    // 2. ลบประวัติการเดินทางในตาราง requestbyuser และ requestbypub ที่อ้างอิงถึงทีมนี้ออก เพื่อหลีกเลี่ยง foreign key constraint
-    const { error: reqError } = await supabase
-      .from('requestbyuser')
-      .delete()
-      .eq('buddy_team_id', cleanId);
-
-    if (reqError) {
-      console.error("Error deleting requestbyuser referencing this team:", reqError);
-    }
-
-    const { error: pubReqError } = await supabase
-      .from('requestbypub')
-      .delete()
-      .eq('buddy_team_id', cleanId);
-
-    if (pubReqError) {
-      console.error("Error deleting requestbypub referencing this team:", pubReqError);
-    }
-
-    // 3. ลบแถวข้อมูลของทีมนี้ออกจากตาราง buddyteam ในฐานข้อมูลโดยสมบูรณ์
+    // 2. อัปเดตสถานะของทีมในตาราง buddyteam เป็น 'ยกเลิกทีม' แทนการลบข้อมูล
     const { error } = await supabase
       .from('buddyteam')
-      .delete()
+      .update({ teamstatus: 'ยกเลิกทีม' })
       .eq('buddyteamid', cleanId);
 
     if (error) throw error;
-    return { message: 'Deleted' };
+    return { message: 'ยกเลิกทีมแล้ว' };
   }
 
   // 5. ดูคู่หูปัจจุบัน
@@ -154,7 +135,7 @@ class BuddyRequestModel {
     const cleanRequestId = parseInt(requestId, 10);
     const cleanBuddyTeamId = parseInt(buddyTeamId, 10);
     
-    // Try primary table first, and fallback to secondary if not found
+    // ลองหาในตารางหลักก่อน หากไม่พบจึงไปหาในตารางรอง
     const primaryTable = isPubJob ? 'requestbypub' : 'requestbyuser';
     const secondaryTable = isPubJob ? 'requestbyuser' : 'requestbypub';
 
@@ -225,7 +206,7 @@ class BuddyRequestModel {
     const primaryTable = isPubJob ? 'requestbypub' : 'requestbyuser';
     const secondaryTable = isPubJob ? 'requestbyuser' : 'requestbypub';
 
-    // 1. Fetch request details to get the fee and verify
+    // 1. ดึงรายละเอียดของงานเพื่อตรวจสอบข้อมูลและดูราคาค่าบริการ
     let requestData = null;
     let requestError = null;
     let tableUsed = primaryTable;
@@ -261,12 +242,12 @@ class BuddyRequestModel {
     if (requestError && !requestData) throw requestError;
     if (!requestData) throw new Error('ไม่พบข้อมูลการเรียกรถ');
 
-    // If already completed, return early to prevent duplicate crediting
+    // หากงานเสร็จสิ้นไปแล้ว ให้ส่งข้อมูลกลับทันทีเพื่อป้องกันการโอนเงินซ้ำซ้อน
     if (requestData.requeststatus === 'completed' || requestData.requeststatus === 'เสร็จสิ้น') {
       return { message: 'งานนี้เสร็จสิ้นไปแล้ว', request: requestData };
     }
 
-    // 2. Update request status to 'เสร็จสิ้น' and evidence picture path
+    // 2. อัปเดตสถานะของงานเป็น 'เสร็จสิ้น' และบันทึกรูปหลักฐาน
     const updatePayload = { requeststatus: 'เสร็จสิ้น' };
     if (evidenceImagePath) {
       updatePayload.finishjobpicpath = evidenceImagePath;
@@ -281,7 +262,7 @@ class BuddyRequestModel {
 
     if (updateReqErr) throw updateReqErr;
 
-    // 3. Update buddy team status to 'Ready'
+    // 3. ปรับสถานะของทีมบัดดี้กลับเป็น 'Ready' (ว่างพร้อมรับงาน)
     const { error: teamError } = await supabase
       .from('buddyteam')
       .update({ teamstatus: 'Ready' })
@@ -291,12 +272,12 @@ class BuddyRequestModel {
       console.error("Error setting buddy team to Ready:", teamError);
     }
 
-    // 4. Split fee: SafeSeat takes 20%, each driver gets 40%
+    // 4. แบ่งค่าบริการ: ระบบ SafeSeat หัก 20%, คนขับแต่ละคนได้คนละ 40%
     const requestFee = parseFloat(requestData.requestfee || 0);
     const driverShare = parseFloat((requestFee * 0.40).toFixed(2));
 
     if (driverShare > 0) {
-      // Get the team members (leader and follower)
+      // ค้นหาสมาชิกในทีม (หัวหน้าทีมและผู้ติดตาม)
       const { data: team, error: teamGetError } = await supabase
         .from('buddyteam')
         .select('leaderid, followerid')
@@ -310,7 +291,7 @@ class BuddyRequestModel {
 
         for (const driverUsername of drivers) {
           try {
-            // Get current wallet balance
+            // ตรวจสอบยอดเงินในกระเป๋าเงินคนขับปัจจุบัน
             const { data: driverInfo, error: driverGetErr } = await supabase
               .from('driver')
               .select('walletbalance')
@@ -322,7 +303,7 @@ class BuddyRequestModel {
             const currentBalance = parseFloat(driverInfo?.walletbalance || 0);
             const newBalance = parseFloat((currentBalance + driverShare).toFixed(2));
 
-            // Update driver wallet balance
+            // อัปเดตยอดเงินในกระเป๋าเงินของคนขับ
             const { error: driverUpdateErr } = await supabase
               .from('driver')
               .update({ walletbalance: newBalance })
@@ -330,7 +311,7 @@ class BuddyRequestModel {
 
             if (driverUpdateErr) throw driverUpdateErr;
 
-            // Insert transaction record
+            // บันทึกประวัติการทำรายการเงินเข้า (Transaction)
             const { error: txError } = await supabase
               .from('driverwallettransaction')
               .insert({

@@ -42,10 +42,10 @@ class DispatcherService {
 
   static async dispatchJob(job, type = 'user') {
     try {
-      // 1. ดึงทีมคนขับที่กำลังว่าง (Ready) ทั้งหมด
+      // 1. ดึงทีมคนขับที่กำลังว่าง (Ready) ทั้งหมด พร้อมข้อมูลเพศเพื่อรองรับ Lady Mode
       const { data: teams, error } = await supabase
         .from('buddyteam')
-        .select('*')
+        .select('*, leader:leaderid(gender), follower:followerid(gender)')
         .eq('teamstatus', 'Ready');
 
       if (error) throw error;
@@ -54,11 +54,26 @@ class DispatcherService {
         return;
       }
 
+      // กรองตาม Lady Mode
+      let eligibleTeams = teams;
+      if (job.isladymode) {
+        const isFemale = (g) => g === 2 || g === '2' || String(g).toLowerCase() === 'female' || String(g) === 'หญิง';
+        eligibleTeams = teams.filter(team => {
+          return team.leader && isFemale(team.leader.gender) && team.follower && isFemale(team.follower.gender);
+        });
+        console.log(`[Dispatcher] กรองทีมสำหรับ Lady Mode (เหลือ ${eligibleTeams.length} ทีมจาก ${teams.length} ทีม)`);
+      }
+
+      if (eligibleTeams.length === 0) {
+        console.log(`[Dispatcher] ❌ ไม่มีทีมคนขับที่สอดคล้องกับเงื่อนไข Lady Mode หรือไม่มีทีมว่าง (Request ID: ${job.requestid})`);
+        return;
+      }
+
       // 2. คำนวณระยะทางและหาทีมที่ใกล้ที่สุด (ในรัศมี 50km)
       let nearestTeam = null;
       let minDistance = 50; // ล็อครัศมีสูงสุดที่ 50 กิโลเมตร (ขยายสำหรับทดสอบและพื้นที่จริง)
 
-      for (const team of teams) {
+      for (const team of eligibleTeams) {
         if (!team.currentloclat || !team.currentloclng) {
           continue;
         }
