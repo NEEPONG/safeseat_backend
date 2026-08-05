@@ -4,10 +4,15 @@ class DriverReportModel {
   // ดึงข้อมูลรายงานทั้งหมด
   static async getAllReports() {
     try {
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      const isoDate = oneMonthAgo.toISOString();
+
       // พยายามดึงข้อมูลแบบ Join ตาราง
       const { data, error } = await supabase
         .from('driverreport')
         .select('*, requestbyuser(*)')
+        .gte('reportdate', isoDate)
         .order('reportdate', { ascending: false });
 
       if (error) {
@@ -16,6 +21,7 @@ class DriverReportModel {
         const { data: fallbackData, error: fallbackError } = await supabase
           .from('driverreport')
           .select('*')
+          .gte('reportdate', isoDate)
           .order('reportdate', { ascending: false });
 
         if (fallbackError) throw fallbackError;
@@ -24,10 +30,15 @@ class DriverReportModel {
       return data;
     } catch (e) {
       console.error("Error in getAllReports:", e);
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      const isoDate = oneMonthAgo.toISOString();
+
       // กรณีเกิดข้อผิดพลาดระดับร้ายแรง ให้ดึงข้อมูลทั้งหมดกลับไปเป็นแบบสำรองสุด
       const { data, error } = await supabase
         .from('driverreport')
         .select('*')
+        .gte('reportdate', isoDate)
         .order('driverreportid', { ascending: false });
       if (error) throw error;
       return data;

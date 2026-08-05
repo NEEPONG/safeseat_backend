@@ -13,11 +13,15 @@ class UserReportModel {
     return data;
   }
 
-  // ดึงรายงานข้อมูลข้อร้องเรียนลูกค้าทั้งหมด
+  // ดึงรายงานข้อมูลข้อร้องเรียนลูกค้าทั้งหมด (ย้อนหลังไม่เกิน 1 เดือน)
   static async getAllReports() {
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
     const { data, error } = await supabase
       .from('userreport')
       .select('*')
+      .gte('reportdate', oneMonthAgo.toISOString())
       .order('reportdate', { ascending: false });
 
     if (error) throw error;
