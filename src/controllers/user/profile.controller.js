@@ -22,13 +22,14 @@ const getProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
     try {
-        const { phoneno, name, gender, email, mainaddress, profileimagepath } = req.body;
+        const { phoneno, name, gender, email, mainaddress, profileimagepath, walletbalance } = req.body;
         const updatedUser = await ProfileService.updateProfile(phoneno, {
             name,
             gender,
             email,
             mainaddress,
-            profileimagepath
+            profileimagepath,
+            walletbalance
         });
         return res.status(200).json({
             message: 'Update profile successful',

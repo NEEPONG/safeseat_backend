@@ -304,21 +304,35 @@ const simulateStep = async (req, res) => {
       // ถ้าไม่มี buddy_team_id ให้พยายามหาคู่หูคนขับที่พร้อม (Ready) 1 ทีม หรือใช้ค่า Mock
       let teamId = request.buddy_team_id;
       if (!teamId) {
+        // ดึงทีมที่ว่างและตรวจสอบเพศรองรับ Lady Mode
         const { data: activeTeams } = await supabase
           .from('buddyteam')
-          .select('buddyteamid')
-          .eq('teamstatus', 'Ready')
-          .limit(1);
+          .select('*, leader:leaderid(gender), follower:followerid(gender)')
+          .eq('teamstatus', 'Ready');
 
-        if (activeTeams && activeTeams.length > 0) {
-          teamId = activeTeams[0].buddyteamid;
+        let eligibleTeams = activeTeams || [];
+        const isFemale = (g) => g === 2 || g === '2' || String(g).toLowerCase() === 'female' || String(g) === 'หญิง';
+        if (request.isladymode) {
+          eligibleTeams = eligibleTeams.filter(team => {
+            return team.leader && isFemale(team.leader.gender) && team.follower && isFemale(team.follower.gender);
+          });
+        }
+
+        if (eligibleTeams && eligibleTeams.length > 0) {
+          teamId = eligibleTeams[0].buddyteamid;
         } else {
           // ดึงทีมไหนก็ได้ที่มี หรือ Mock ID 1
           const { data: anyTeams } = await supabase
             .from('buddyteam')
-            .select('buddyteamid')
-            .limit(1);
-          teamId = (anyTeams && anyTeams.length > 0) ? anyTeams[0].buddyteamid : 1;
+            .select('*, leader:leaderid(gender), follower:followerid(gender)');
+          
+          let eligibleAnyTeams = anyTeams || [];
+          if (request.isladymode) {
+            eligibleAnyTeams = eligibleAnyTeams.filter(team => {
+              return team.leader && isFemale(team.leader.gender) && team.follower && isFemale(team.follower.gender);
+            });
+          }
+          teamId = (eligibleAnyTeams && eligibleAnyTeams.length > 0) ? eligibleAnyTeams[0].buddyteamid : 1;
         }
         
         // อัปเดตสถานะทีมเป็น Busy

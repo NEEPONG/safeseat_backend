@@ -16,7 +16,7 @@ class WalletModel {
   }
 
   static async getTransactionsByUsername(username) {
-    // Fetch transactions for driver
+    // ดึงประวัติธุรกรรมสำหรับคนขับ
     const { data: transactions, error: txError } = await supabase
         .from('driverwallettransaction')
         .select('*')
@@ -25,7 +25,7 @@ class WalletModel {
 
     if (txError) throw txError;
     
-    // Map to mobile app's expected format
+    // แปลงโครงสร้างข้อมูลให้ตรงกับรูปแบบที่แอปมือถือต้องการ
     return transactions.map(tx => ({
         id: tx.tranid,
         type: tx.trantype.toLowerCase() === 'withdraw' ? 'withdraw' : 'topup',
@@ -36,14 +36,14 @@ class WalletModel {
   }
 
   static async withdraw(username, amount) {
-    // 1. Get current balance
+    // 1. ตรวจสอบยอดเงินคงเหลือปัจจุบัน
     const currentBalance = await this.getBalanceByUsername(username);
 
     if (amount > currentBalance) {
       throw new Error("Insufficient balance");
     }
 
-    // 2. Update balance in driver table
+    // 2. หักเงินในตารางคนขับ (driver)
     const { error: updateError } = await supabase
         .from('driver')
         .update({'walletbalance': currentBalance - amount})
@@ -51,7 +51,7 @@ class WalletModel {
 
     if (updateError) throw updateError;
 
-    // 3. Record transaction
+    // 3. บันทึกประวัติการทำธุรกรรมถอนเงิน
     const { error: insertError } = await supabase.from('driverwallettransaction').insert({
       'driver_id': username,
       'amount': amount,
