@@ -144,8 +144,8 @@ const registerPub = async (pubData) => {
     pubaddresslng: lng,
     regisimagepath: regisImagePath || null,
 
-    // กำหนด status เริ่มต้นเป็น 'pending' (รอ admin อนุมัติ)
-    regisstatus: 'pending',
+    // กำหนด status เริ่มต้นเป็น 'รอดำเนินการ' (รอ admin อนุมัติ)
+    regisstatus: 'รอดำเนินการ',
     // บันทึกวันที่สมัคร (JavaScript Date object)
     regisdate:   new Date(),
   })

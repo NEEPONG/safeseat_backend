@@ -62,12 +62,12 @@ class AdminController {
       const { count: pubPending } = await supabase
         .from('pub')
         .select('*', { count: 'exact', head: true })
-        .eq('regisstatus', 'pending');
+        .or('regisstatus.eq.รอดำเนินการ,regisstatus.eq.pending');
 
       const { count: pubApproved } = await supabase
         .from('pub')
         .select('*', { count: 'exact', head: true })
-        .eq('regisstatus', 'approved');
+        .or('regisstatus.eq.อนุมัติแล้ว,regisstatus.eq.approved');
 
       // 3. สถิติรายงานคนขับ (ไม่นับปฏิเสธ/ไม่อนุมัติ)
       const { count: driverReportPending } = await supabase
@@ -257,13 +257,18 @@ class AdminController {
   static async updatePubStatus(req, res) {
     try {
       const { username } = req.params;
-      const { status } = req.body; // 'approved' หรือ 'rejected'
+      const { status } = req.body; // 'approved', 'rejected', 'อนุมัติแล้ว', 'ปฏิเสธ'
 
-      if (!status || !['approved', 'rejected', 'pending', 'ปฏิเสธ'].includes(status)) {
+      if (!status || !['approved', 'rejected', 'pending', 'อนุมัติแล้ว', 'ปฏิเสธ', 'รอดำเนินการ'].includes(status)) {
         return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
       }
 
-      if (status === 'rejected' || status === 'ปฏิเสธ') {
+      let thaiStatus = status;
+      if (status === 'approved') thaiStatus = 'อนุมัติแล้ว';
+      if (status === 'rejected') thaiStatus = 'ปฏิเสธ';
+      if (status === 'pending') thaiStatus = 'รอดำเนินการ';
+
+      if (thaiStatus === 'ปฏิเสธ') {
         // ลบข้อมูลร้านค้าออกจากระบบ
         const { data, error } = await supabase
           .from('pub')
@@ -283,7 +288,7 @@ class AdminController {
 
       const { data, error } = await supabase
         .from('pub')
-        .update({ regisstatus: status })
+        .update({ regisstatus: thaiStatus })
         .eq('username', username)
         .select('username, regisstatus, pubname')
         .maybeSingle();
@@ -293,7 +298,7 @@ class AdminController {
 
       return res.status(200).json({
         success: true,
-        message: `ปรับปรุงสถานะสถานประกอบการเป็น ${status} สำเร็จ`,
+        message: `ปรับปรุงสถานะสถานประกอบการเป็น ${thaiStatus} สำเร็จ`,
         data
       });
     } catch (err) {
