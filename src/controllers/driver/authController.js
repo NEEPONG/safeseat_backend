@@ -195,6 +195,11 @@ class AuthController {
         return res.status(400).json({ error: 'หมายเลขบัตรประชาชนนี้สมัครสมาชิกแล้ว' });
       }
 
+      const carPlateDup = await AuthModel.checkDuplicateCarPlate(carPlate);
+      if (carPlateDup) {
+        return res.status(400).json({ error: 'ทะเบียนยานพาหนะนี้ถูกใช้งานแล้วในระบบ กรุณาใช้ทะเบียนอื่น' });
+      }
+
       // ── Validation 4: Upload Files to Supabase Storage ───────
       const regisImagePath = await uploadToSupabase(req.files.regisImagePath[0], 'images', 'drivers/profile');
       const carImagePath = await uploadToSupabase(req.files.carImagePath[0], 'images', 'drivers/cars');
@@ -278,7 +283,7 @@ class AuthController {
   }
   static async checkCredentials(req, res) {
     try {
-      const { email, phoneNo, idCard, username } = req.body;
+      const { email, phoneNo, idCard, username, carPlate } = req.body;
       if (email) {
         const emailDup = await AuthModel.checkDuplicateEmail(email);
         if (emailDup) {
@@ -301,6 +306,12 @@ class AuthController {
         const usernameDup = await AuthModel.checkDuplicateUsername(username);
         if (usernameDup) {
           return res.status(400).json({ error: 'ชื่อผู้ใช้นี้ถูกใช้งานแล้ว' });
+        }
+      }
+      if (carPlate) {
+        const carPlateDup = await AuthModel.checkDuplicateCarPlate(carPlate);
+        if (carPlateDup) {
+          return res.status(400).json({ error: 'ทะเบียนยานพาหนะนี้ถูกใช้งานแล้วในระบบ กรุณาใช้ทะเบียนอื่น' });
         }
       }
       return res.status(200).json({ success: true, message: 'ข้อมูลสามารถใช้งานได้' });

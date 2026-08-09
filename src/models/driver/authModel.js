@@ -109,6 +109,18 @@ class AuthModel {
     return !!data;
   }
 
+  // ตรวจสอบว่ามีทะเบียนยานพาหนะนี้อยู่ในระบบแล้วหรือยัง (Normalized เปรียบเทียบ)
+  static async checkDuplicateCarPlate(carPlate) {
+    if (!carPlate) return false;
+    const cleanInput = String(carPlate).replace(/[\s-]/g, '').toLowerCase();
+    const { data, error } = await supabase
+      .from('drivercar')
+      .select('carplate');
+
+    if (error || !data) return false;
+    return data.some(c => c.carplate && String(c.carplate).replace(/[\s-]/g, '').toLowerCase() === cleanInput);
+  }
+
   // สมัครสมาชิกคนขับพร้อมทั้งลงทะเบียนข้อมูลรถยนต์
   static async register(driverData, carData) {
     // 1. เพิ่มข้อมูลรถยนต์ของคนขับก่อน
