@@ -47,7 +47,7 @@ class AdminController {
   // GET /api/admin/stats
   static async getStats(req, res) {
     try {
-      // 1. สถิติคนขับ (ไม่นับปฏิเสธ)
+      // 1. สถิติคนขับ
       const { count: driverPending } = await supabase
         .from('driver')
         .select('*', { count: 'exact', head: true })
@@ -58,7 +58,12 @@ class AdminController {
         .select('*', { count: 'exact', head: true })
         .eq('registerstatus', 'อนุมัติแล้ว');
 
-      // 2. สถิติตุ๊กร้านค้า / สถานบันเทิง (ไม่นับ rejected)
+      const { count: driverRejected } = await supabase
+        .from('driver')
+        .select('*', { count: 'exact', head: true })
+        .eq('registerstatus', 'ปฏิเสธ');
+
+      // 2. สถิติตุ๊กร้านค้า / สถานบันเทิง
       const { count: pubPending } = await supabase
         .from('pub')
         .select('*', { count: 'exact', head: true })
@@ -69,7 +74,12 @@ class AdminController {
         .select('*', { count: 'exact', head: true })
         .or('regisstatus.eq.อนุมัติแล้ว,regisstatus.eq.approved');
 
-      // 3. สถิติรายงานคนขับ (ไม่นับปฏิเสธ/ไม่อนุมัติ)
+      const { count: pubRejected } = await supabase
+        .from('pub')
+        .select('*', { count: 'exact', head: true })
+        .or('regisstatus.eq.ปฏิเสธ,regisstatus.eq.rejected');
+
+      // 3. สถิติรายงานคนขับ
       const { count: driverReportPending } = await supabase
         .from('driverreport')
         .select('*', { count: 'exact', head: true })
@@ -80,7 +90,7 @@ class AdminController {
         .select('*', { count: 'exact', head: true })
         .or('reportstatus.eq.อนุมัติแล้ว,reportstatus.eq.แก้ไขแล้ว');
 
-      // 4. สถิติรายงานลูกค้า / ผู้ใช้ (ไม่นับปฏิเสธ/ไม่อนุมัติ)
+      // 4. สถิติรายงานลูกค้า / ผู้ใช้
       const { count: userReportPending } = await supabase
         .from('userreport')
         .select('*', { count: 'exact', head: true })
@@ -97,14 +107,14 @@ class AdminController {
           drivers: {
             pending: driverPending || 0,
             approved: driverApproved || 0,
-            rejected: 0,
-            total: (driverPending || 0) + (driverApproved || 0)
+            rejected: driverRejected || 0,
+            total: (driverPending || 0) + (driverApproved || 0) + (driverRejected || 0)
           },
           pubs: {
             pending: pubPending || 0,
             approved: pubApproved || 0,
-            rejected: 0,
-            total: (pubPending || 0) + (pubApproved || 0)
+            rejected: pubRejected || 0,
+            total: (pubPending || 0) + (pubApproved || 0) + (pubRejected || 0)
           },
           driverReports: {
             pending: driverReportPending || 0,
@@ -125,11 +135,10 @@ class AdminController {
   // GET /api/admin/drivers
   static async getDrivers(req, res) {
     try {
-      // ดึงรายชื่อคนขับพร้อมข้อมูลรถยนต์ (กรองเอาปฏิเสธออก)
+      // ดึงรายชื่อคนขับพร้อมข้อมูลรถยนต์ (รวมทุกสถานะ)
       const { data, error } = await supabase
         .from('driver')
         .select('*, drivercar:driver_car(*)')
-        .neq('registerstatus', 'ปฏิเสธ')
         .order('regisdate', { ascending: true });
 
       if (error) throw error;
@@ -158,15 +167,13 @@ class AdminController {
     }
   }
 
-
   // GET /api/admin/pubs
   static async getPubs(req, res) {
     try {
-      // ดึงรายชื่อสถานประกอบการ (กรองเอา rejected ออก)
+      // ดึงรายชื่อสถานประกอบการ (รวมทุกสถานะ)
       const { data, error } = await supabase
         .from('pub')
         .select('*')
-        .neq('regisstatus', 'rejected')
         .order('regisdate', { ascending: true });
 
       if (error) throw error;
@@ -205,36 +212,20 @@ class AdminController {
   static async updateDriverStatus(req, res) {
     try {
       const { username } = req.params;
-      const { status } = req.body; // 'อนุมัติแล้ว' หรือ 'ปฏิเสธ'
+      const { status } = req.body; // 'อนุมัติแล้ว' หรือ 'ปฏิเสธ' หรือ 'รอดำเนินการ'
 
-      if (!status || !['อนุมัติแล้ว', 'ปฏิเสธ', 'รอดำเนินการ'].includes(status)) {
+      if (!status || !['อนุมัติแล้ว', 'ปฏิเสธ', 'รอดำเนินการ', 'approved', 'rejected', 'pending'].includes(status)) {
         return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
       }
 
-      if (status === 'ปฏิเสธ' || status === 'rejected') {
-        // ลบข้อมูลรถของคนขับออกก่อน (ถ้ามี)
-        await supabase.from('driver_car').delete().eq('driver_username', username);
-
-        // ลบข้อมูลคนขับออกจากระบบ
-        const { data, error } = await supabase
-          .from('driver')
-          .delete()
-          .eq('username', username)
-          .select('username, firstname, lastname')
-          .maybeSingle();
-
-        if (error) throw error;
-
-        return res.status(200).json({
-          success: true,
-          message: `ปฏิเสธและตัดคนขับ ${username} ออกจากระบบเรียบร้อยแล้ว`,
-          data
-        });
-      }
+      let thaiStatus = status;
+      if (status === 'approved') thaiStatus = 'อนุมัติแล้ว';
+      if (status === 'rejected') thaiStatus = 'ปฏิเสธ';
+      if (status === 'pending') thaiStatus = 'รอดำเนินการ';
 
       const { data, error } = await supabase
         .from('driver')
-        .update({ registerstatus: status })
+        .update({ registerstatus: thaiStatus })
         .eq('username', username)
         .select('username, registerstatus, firstname, lastname')
         .maybeSingle();
@@ -244,7 +235,7 @@ class AdminController {
 
       return res.status(200).json({
         success: true,
-        message: `ปรับปรุงสถานะคนขับเป็น ${status} สำเร็จ`,
+        message: `ปรับปรุงสถานะคนขับเป็น ${thaiStatus} สำเร็จ`,
         data
       });
     } catch (err) {
@@ -267,24 +258,6 @@ class AdminController {
       if (status === 'approved') thaiStatus = 'อนุมัติแล้ว';
       if (status === 'rejected') thaiStatus = 'ปฏิเสธ';
       if (status === 'pending') thaiStatus = 'รอดำเนินการ';
-
-      if (thaiStatus === 'ปฏิเสธ') {
-        // ลบข้อมูลร้านค้าออกจากระบบ
-        const { data, error } = await supabase
-          .from('pub')
-          .delete()
-          .eq('username', username)
-          .select('username, pubname')
-          .maybeSingle();
-
-        if (error) throw error;
-
-        return res.status(200).json({
-          success: true,
-          message: `ปฏิเสธและตัดสถานประกอบการ ${username} ออกจากระบบเรียบร้อยแล้ว`,
-          data
-        });
-      }
 
       const { data, error } = await supabase
         .from('pub')

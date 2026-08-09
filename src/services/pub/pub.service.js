@@ -97,9 +97,40 @@ const registerPub = async (pubData) => {
 
   // ── ตรวจสอบ username ซ้ำ (query ฐานข้อมูล) ─────────────────
   // ต้องทำหลังจาก validate format แล้ว เพื่อไม่ query ถ้าข้อมูลผิดอยู่แล้ว
+  // ── ตรวจสอบ username ซ้ำ ──────────────────────────────────────
   const existing = await PubModel.findByUsername(username)
   if (existing) {
-    throw new Error('ข้อมูลผู้ใช้ซ้ำ กรุณาลองใหม่อีกครั้ง')
+    if (existing.regisstatus === 'ปฏิเสธ' || existing.regisstatus === 'rejected') {
+      // มีบัญชีนี้อยู่แต่สถานะเดิมถูกปฏิเสธ -> อนุญาตให้อัปเดตข้อมูลและยื่นสมัครใหม่
+      const salt = await bcrypt.genSalt(10)
+      const hashedPassword = await bcrypt.hash(password, salt)
+      const { data: updated, error: updateErr } = await require('../../config/supabase').supabase
+        .from('pub')
+        .update({
+          password: hashedPassword,
+          pubname: pubName,
+          pubemail: pubEmail,
+          pubphone: pubPhone,
+          pubopen: pubOpen,
+          pubclose: pubClose,
+          taxnumber: taxNumber,
+          bankaccountno: bankAccountNo,
+          bankaccountname: bankAccountName,
+          pubaddresslat: lat,
+          pubaddresslng: lng,
+          regisimagepath: regisImagePath || existing.regisimagepath,
+          regisstatus: 'รอดำเนินการ',
+          regisdate: new Date(),
+        })
+        .eq('username', username)
+        .select()
+        .single()
+
+      if (updateErr) throw new Error(`ไม่สามารถอัปเดตข้อมูลการสมัครได้: ${updateErr.message}`)
+      return updated
+    } else {
+      throw new Error('ชื่อผู้ใช้นี้มีในระบบแล้ว กรุณาใช้ชื่อผู้ใช้อื่น')
+    }
   }
 
   // ── ตรวจสอบ email ซ้ำ ข้ามตาราง (pub & driver) ────────────────
