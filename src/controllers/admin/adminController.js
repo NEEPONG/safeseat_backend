@@ -171,7 +171,15 @@ class AdminController {
 
       if (error) throw error;
 
-      let pubsData = data || [];
+      const { getFullStorageUrl } = require('../../utils/supabaseStorage');
+      let pubsData = (data || []).map(pub => {
+        return {
+          ...pub,
+          regisimagepath: pub.regisimagepath ? getFullStorageUrl(pub.regisimagepath) : null,
+          pubimagepath: pub.pubimagepath ? getFullStorageUrl(pub.pubimagepath) : null,
+        };
+      });
+
       // เรียงลำดับ: สถานะรอดำเนินการ (pending) ขึ้นก่อน ตามด้วยลำดับวันที่สมัครก่อน
       pubsData.sort((a, b) => {
         const aPending = a.regisstatus === 'pending' || a.regisstatus === 'รอดำเนินการ';
@@ -307,7 +315,20 @@ class AdminController {
 
       if (error) throw error;
 
-      let reportsData = data || [];
+      const { getFullStorageUrl } = require('../../utils/supabaseStorage');
+      let reportsData = (data || []).map(report => {
+        let imageArray = [];
+        if (report.reportimagepath) {
+          const rawPaths = String(report.reportimagepath).split(',').map(s => s.trim()).filter(Boolean);
+          imageArray = rawPaths.map(p => getFullStorageUrl(p));
+        }
+        return {
+          ...report,
+          reportimages: imageArray,
+          reportimagepath: imageArray[0] || null
+        };
+      });
+
       // เรียงลำดับ: สถานะกำลังดำเนินการขึ้นก่อน ตามด้วยวันที่แจ้งรายงานก่อน
       reportsData.sort((a, b) => {
         const aPending = a.reportstatus === 'กำลังดำเนินการ' || a.reportstatus === 'รอดำเนินการ' || a.reportstatus === 'pending';
@@ -342,7 +363,20 @@ class AdminController {
 
       if (error) throw error;
 
-      let reportsData = (data || []).filter(r => r.reportstatus !== 'ไม่อนุมัติ' && r.reportstatus !== 'ปฏิเสธ');
+      const { getFullStorageUrl } = require('../../utils/supabaseStorage');
+      let reportsData = (data || []).filter(r => r.reportstatus !== 'ไม่อนุมัติ' && r.reportstatus !== 'ปฏิเสธ').map(report => {
+        let imageArray = [];
+        if (report.reportimagepath) {
+          const rawPaths = String(report.reportimagepath).split(',').map(s => s.trim()).filter(Boolean);
+          imageArray = rawPaths.map(p => getFullStorageUrl(p));
+        }
+        return {
+          ...report,
+          reportimages: imageArray,
+          reportimagepath: imageArray[0] || null
+        };
+      });
+
       // เรียงลำดับ: สถานะกำลังดำเนินการขึ้นก่อน ตามด้วยวันที่แจ้งรายงานก่อน
       reportsData.sort((a, b) => {
         const aPending = a.reportstatus === 'กำลังดำเนินการ' || a.reportstatus === 'รอดำเนินการ' || a.reportstatus === 'pending';
