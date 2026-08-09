@@ -66,7 +66,7 @@ const findByEmail = async (email) => {
 const findRegistrationStatus = async (username) => {
   const { data, error } = await supabase
     .from('pub')
-    .select('regisstatus, regisdate, pubname, pubemail, pubphone, regisimagepath')
+    .select('regisstatus, regisdate, pubname, pubemail, pubphone, pubaddress, pubaddresslat, pubaddresslng, pubopen, pubclose, taxnumber, bankaccountno, bankaccountname, regisimagepath')
     .eq('username', username)
     .single()
 
