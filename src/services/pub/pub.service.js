@@ -102,10 +102,22 @@ const registerPub = async (pubData) => {
     throw new Error('ข้อมูลผู้ใช้ซ้ำ กรุณาลองใหม่อีกครั้ง')
   }
 
-  // ── ตรวจสอบ email ซ้ำ ───────────────────────────────────────
-  const existingEmail = await PubModel.findByEmail(pubEmail)
+  // ── ตรวจสอบ email ซ้ำ ข้ามตาราง (pub & driver) ────────────────
+  const existingEmail = await PubModel.checkDuplicateEmailCrossTable(pubEmail)
   if (existingEmail) {
     throw new Error('อีเมลนี้มีในระบบแล้ว กรุณาใช้อีเมลอื่น')
+  }
+
+  // ── ตรวจสอบ phone ซ้ำ ข้ามตาราง (pub & driver) ────────────────
+  const existingPhone = await PubModel.checkDuplicatePhoneCrossTable(pubPhone)
+  if (existingPhone) {
+    throw new Error('หมายเลขโทรศัพท์นี้มีในระบบแล้ว กรุณาใช้หมายเลขอื่น')
+  }
+
+  // ── ตรวจสอบ taxnumber ซ้ำ ───────────────────────────────────
+  const existingTax = await PubModel.findByTaxNumber(taxNumber)
+  if (existingTax) {
+    throw new Error('เลขผู้เสียภาษีนี้มีในระบบแล้ว กรุณาใช้อื่น')
   }
 
   // ── Insert ข้อมูลลง Supabase ─────────────────────────────────
@@ -164,13 +176,26 @@ const loginPub = async (username, password) => {
 }
 
 // ════════════════════════════════════════════════════════════════
-// checkEmail — ตรวจสอบอีเมลซ้ำ
+// checkEmail / checkCredentials — ตรวจสอบอีเมล, เบอร์โทร, เลขผู้เสียภาษีซ้ำ
 // ════════════════════════════════════════════════════════════════
-const checkEmail = async (email) => {
-  if (!email) throw new Error('กรุณาระบุอีเมล')
-  const existing = await PubModel.findByEmail(email)
-  if (existing) {
-    throw new Error('อีเมลนี้มีในระบบแล้ว กรุณาใช้อีเมลอื่น')
+const checkEmail = async (email, phone, taxNumber) => {
+  if (email) {
+    const existing = await PubModel.checkDuplicateEmailCrossTable(email)
+    if (existing) {
+      throw new Error('อีเมลนี้มีในระบบแล้ว กรุณาใช้อีเมลอื่น')
+    }
+  }
+  if (phone) {
+    const existingPhone = await PubModel.checkDuplicatePhoneCrossTable(phone)
+    if (existingPhone) {
+      throw new Error('หมายเลขโทรศัพท์นี้มีในระบบแล้ว กรุณาใช้หมายเลขอื่น')
+    }
+  }
+  if (taxNumber) {
+    const existingTax = await PubModel.findByTaxNumber(taxNumber)
+    if (existingTax) {
+      throw new Error('เลขผู้เสียภาษีนี้มีในระบบแล้ว กรุณาตรวจสอบอีกครั้ง')
+    }
   }
   return true
 }

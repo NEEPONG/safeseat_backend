@@ -93,4 +93,46 @@ const findProfileByUsername = async (username) => {
   return data
 }
 
-module.exports = { findByUsername, findByEmail, findRegistrationStatus, findProfileByUsername, create }
+// ── Query: ตรวจสอบอีเมลซ้ำข้ามตาราง (pub & driver) ──────────────────────
+const checkDuplicateEmailCrossTable = async (email) => {
+  if (!email) return false
+  const { data: pubData } = await supabase.from('pub').select('pubemail').eq('pubemail', email).maybeSingle()
+  if (pubData) return true
+  const { data: driverData } = await supabase.from('driver').select('email').eq('email', email).maybeSingle()
+  if (driverData) return true
+  return false
+}
+
+// ── Query: ตรวจสอบเบอร์โทรซ้ำข้ามตาราง (pub & driver) ───────────────────
+const checkDuplicatePhoneCrossTable = async (phone) => {
+  if (!phone) return false
+  const { data: pubData } = await supabase.from('pub').select('pubphone').eq('pubphone', phone).maybeSingle()
+  if (pubData) return true
+  const { data: driverData } = await supabase.from('driver').select('phoneno').eq('phoneno', phone).maybeSingle()
+  if (driverData) return true
+  return false
+}
+
+// ── Query: หา pub จาก taxnumber ─────────────────────────────
+const findByTaxNumber = async (taxNumber) => {
+  if (!taxNumber) return null
+  const { data, error } = await supabase
+    .from('pub')
+    .select('taxnumber')
+    .eq('taxnumber', taxNumber)
+    .maybeSingle()
+
+  if (error) return null
+  return data
+}
+
+module.exports = {
+  findByUsername,
+  findByEmail,
+  findByTaxNumber,
+  checkDuplicateEmailCrossTable,
+  checkDuplicatePhoneCrossTable,
+  findRegistrationStatus,
+  findProfileByUsername,
+  create
+}

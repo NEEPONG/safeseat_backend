@@ -57,28 +57,44 @@ class AuthModel {
     return data;
   }
 
-  // ตรวจสอบว่ามีอีเมลนี้อยู่ในระบบแล้วหรือยัง
+  // Check if email already exists in driver or pub
   static async checkDuplicateEmail(email) {
-    const { data, error } = await supabase
+    if (!email) return false;
+    const { data: driverData } = await supabase
       .from('driver')
       .select('email')
       .eq('email', email)
       .maybeSingle();
 
-    if (error) throw error;
-    return !!data;
+    if (driverData) return true;
+
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('pubemail')
+      .eq('pubemail', email)
+      .maybeSingle();
+
+    return !!pubData;
   }
 
-  // ตรวจสอบว่ามีเบอร์โทรศัพท์นี้อยู่ในระบบแล้วหรือยัง
+  // Check if phone number already exists in driver or pub
   static async checkDuplicatePhone(phoneno) {
-    const { data, error } = await supabase
+    if (!phoneno) return false;
+    const { data: driverData } = await supabase
       .from('driver')
       .select('phoneno')
       .eq('phoneno', phoneno)
       .maybeSingle();
 
-    if (error) throw error;
-    return !!data;
+    if (driverData) return true;
+
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('pubphone')
+      .eq('pubphone', phoneno)
+      .maybeSingle();
+
+    return !!pubData;
   }
 
   // ตรวจสอบว่ามีเลขบัตรประชาชนนี้อยู่ในระบบแล้วหรือยัง
