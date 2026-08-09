@@ -283,12 +283,10 @@ class AdminController {
   // GET /api/admin/driver-reports
   static async getDriverReports(req, res) {
     try {
-      // ดึงรายงานความเสียหาย/ความประพฤติของคนขับ (กรองเอาปฏิเสธ/ไม่อนุมัติออก)
+      // ดึงรายงานเกี่ยวกับคนขับ (รวมทุกสถานะ)
       const { data, error } = await supabase
         .from('driverreport')
         .select('*')
-        .neq('reportstatus', 'ไม่อนุมัติ')
-        .neq('reportstatus', 'ปฏิเสธ')
         .order('reportdate', { ascending: true });
 
       if (error) throw error;
@@ -331,18 +329,16 @@ class AdminController {
   // GET /api/admin/user-reports
   static async getUserReports(req, res) {
     try {
-      // ดึงรายงานเกี่ยวกับลูกค้า / ผู้ใช้ (กรองเอาปฏิเสธ/ไม่อนุมัติออก)
+      // ดึงรายงานเกี่ยวกับลูกค้า / ผู้ใช้ (รวมทุกสถานะ)
       const { data, error } = await supabase
         .from('userreport')
         .select('*')
-        .neq('reportstatus', 'ไม่อนุมัติ')
-        .neq('reportstatus', 'ปฏิเสธ')
         .order('reportdate', { ascending: true });
 
       if (error) throw error;
 
       const { getFullStorageUrl } = require('../../utils/supabaseStorage');
-      let reportsData = (data || []).filter(r => r.reportstatus !== 'ไม่อนุมัติ' && r.reportstatus !== 'ปฏิเสธ').map(report => {
+      let reportsData = (data || []).map(report => {
         let imageArray = [];
         if (report.reportimagepath) {
           const rawPaths = String(report.reportimagepath).split(',').map(s => s.trim()).filter(Boolean);
