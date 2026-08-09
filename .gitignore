@@ -123,3 +123,7 @@ dist
 
 # Mac OS
 .DS_Store
+
+# Temporary uploads directory
+uploads/*
+!uploads/.gitkeep
