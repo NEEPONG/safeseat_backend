@@ -113,7 +113,16 @@ const decompressPath = (compressedPath) => {
  */
 const getFullStorageUrl = (relativePath) => {
   if (!relativePath) return '';
-  const decompressed = decompressPath(relativePath);
+  let decompressed = decompressPath(relativePath);
+  
+  // Clean up any leading slash or redundant "images/" bucket prefix
+  if (decompressed.startsWith('/')) {
+    decompressed = decompressed.substring(1);
+  }
+  if (decompressed.startsWith('images/')) {
+    decompressed = decompressed.substring(7);
+  }
+  
   if (decompressed.startsWith('http://') || decompressed.startsWith('https://')) {
     return decompressed;
   }
