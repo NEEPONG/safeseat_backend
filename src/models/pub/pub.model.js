@@ -66,7 +66,7 @@ const findByEmail = async (email) => {
 const findRegistrationStatus = async (username) => {
   const { data, error } = await supabase
     .from('pub')
-    .select('regisstatus, regisdate, pubname, pubemail, pubphone, regisimagepath')
+    .select('regisstatus, regisdate, pubname, pubemail, pubphone, pubaddress, pubaddresslat, pubaddresslng, pubopen, pubclose, taxnumber, bankaccountno, bankaccountname, regisimagepath')
     .eq('username', username)
     .single()
 
@@ -93,4 +93,47 @@ const findProfileByUsername = async (username) => {
   return data
 }
 
-module.exports = { findByUsername, findByEmail, findRegistrationStatus, findProfileByUsername, create }
+// ── Query: ตรวจสอบอีเมลซ้ำข้ามตาราง (pub & driver) ──────────────────────
+const checkDuplicateEmailCrossTable = async (email) => {
+  if (!email) return false
+  const { data: pubData } = await supabase.from('pub').select('pubemail, regisstatus').eq('pubemail', email).maybeSingle()
+  if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true
+  const { data: driverData } = await supabase.from('driver').select('email, registerstatus').eq('email', email).maybeSingle()
+  if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true
+  return false
+}
+
+// ── Query: ตรวจสอบเบอร์โทรซ้ำข้ามตาราง (pub & driver) ───────────────────
+const checkDuplicatePhoneCrossTable = async (phone) => {
+  if (!phone) return false
+  const { data: pubData } = await supabase.from('pub').select('pubphone, regisstatus').eq('pubphone', phone).maybeSingle()
+  if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true
+  const { data: driverData } = await supabase.from('driver').select('phoneno, registerstatus').eq('phoneno', phone).maybeSingle()
+  if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true
+  return false
+}
+
+// ── Query: หา pub จาก taxnumber ─────────────────────────────
+const findByTaxNumber = async (taxNumber) => {
+  if (!taxNumber) return null
+  const { data, error } = await supabase
+    .from('pub')
+    .select('taxnumber, regisstatus')
+    .eq('taxnumber', taxNumber)
+    .maybeSingle()
+
+  if (error || !data) return null
+  if (data.regisstatus === 'ปฏิเสธ' || data.regisstatus === 'rejected') return null
+  return data
+}
+
+module.exports = {
+  findByUsername,
+  findByEmail,
+  findByTaxNumber,
+  checkDuplicateEmailCrossTable,
+  checkDuplicatePhoneCrossTable,
+  findRegistrationStatus,
+  findProfileByUsername,
+  create
+}

@@ -18,12 +18,19 @@ const requestDriver = async (req, res) => {
       phoneNo,
       phoneEmer,
       carType,
+      carModel,
+      carmodel,
+      licensePlate,
+      carplate,
       dropoffLatitude,
       dropoffLongitude,
       isLadyMode,
       note,
       paymentMethod
     } = req.body
+
+    const carModelVal = (carModel || carmodel || '').trim()
+    const licensePlateVal = (licensePlate || carplate || '').trim()
 
     // 1. ตรวจสอบข้อมูลบังคับ
     if (!pubUsername || !custName || !phoneNo || !phoneEmer || !carType || !dropoffLatitude || !dropoffLongitude || paymentMethod === undefined) {
@@ -33,6 +40,10 @@ const requestDriver = async (req, res) => {
     // ตรวจสอบความยาวเบอร์โทร
     if (phoneNo.length !== 10 || phoneEmer.length !== 10) {
       return res.status(400).json({ success: false, message: 'เบอร์โทรศัพท์ต้องมี 10 หลัก' })
+    }
+
+    if (phoneNo.trim() === phoneEmer.trim()) {
+      return res.status(400).json({ success: false, message: 'เบอร์โทรศัพท์ของลูกค้าและเบอร์โทรฉุกเฉินต้องห้ามซ้ำกัน' })
     }
 
     // 2. ดึงพิกัดจุดรับ (pickup) จากร้านค้า
@@ -79,13 +90,24 @@ const requestDriver = async (req, res) => {
 
     const fee = Math.round(150 + dist * 25)
 
+    // บันทึกข้อมูลรุ่นรถและทะเบียนใน note หากไม่มี column carmodel/carplate
+    let formattedNote = note || ''
+    if (carModelVal || licensePlateVal) {
+      const carTag = `[รุ่นรถ: ${carModelVal || '-'} | ทะเบียน: ${licensePlateVal || '-'}]`
+      if (!formattedNote.includes(carTag)) {
+        formattedNote = formattedNote ? `${carTag} ${formattedNote}` : carTag
+      }
+    }
+
     // 3. เตรียมข้อมูลที่จะบันทึกลงตาราง requestbypub
     const newRequest = {
       pub_id: pubUsername,
       custname: custName,
       phoneno: phoneNo,
       phoneemer: phoneEmer,
-      note: note || '',
+      carmodel: carModelVal,
+      carplate: licensePlateVal,
+      note: formattedNote,
       isladymode: isLadyMode || false,
       paymentmethod: parseInt(paymentMethod),
       requeststatus: 'รอคนขับ',
@@ -99,12 +121,24 @@ const requestDriver = async (req, res) => {
       reqdistance: dist
     }
 
-    // 4. บันทึกลงฐานข้อมูล
-    const createdRequest = await createServiceRequest(newRequest)
+    // 4. บันทึกลงฐานข้อมูล (ลองใช้ carmodel & carplate ก่อน ถ้าไม่มี column ใน DB ให้ fallback)
+    let createdRequest = null
+    try {
+      createdRequest = await createServiceRequest(newRequest)
+    } catch (dbErr) {
+      console.warn('[requestDriver Warning] Failed to insert with carmodel/carplate columns, trying fallback:', dbErr.message)
+      delete newRequest.carmodel
+      delete newRequest.carplate
+      createdRequest = await createServiceRequest(newRequest)
+    }
 
     if (!createdRequest) {
       return res.status(500).json({ success: false, message: 'ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง' })
     }
+
+    // รับประกันว่าส่ง carmodel & carplate กลับไปใน response เสมอ
+    createdRequest.carmodel = carModelVal
+    createdRequest.carplate = licensePlateVal
 
     // ส่งงานกระจายไปยังคนขับในพื้นที่ทันทีโดยไม่ต้องพึ่งพา postgres listener
     DispatcherService.dispatchJob(createdRequest, 'pub').catch(err => {
@@ -117,6 +151,23 @@ const requestDriver = async (req, res) => {
     console.error('Error in requestDriver:', error)
     return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการเรียกรถ: ' + error.message, error: error.message })
   }
+}
+
+/**
+ * Helper สกัด carmodel และ carplate จาก note หากใน DB ไม่มี column
+ */
+const extractCarInfoFromNote = (item) => {
+  if (!item) return item
+  if (!item.carmodel || !item.carplate) {
+    if (item.note) {
+      const match = item.note.match(/\[รุ่นรถ:\s*(.*?)\s*\|\s*ทะเบียน:\s*(.*?)\]/)
+      if (match) {
+        if (!item.carmodel) item.carmodel = match[1] !== '-' ? match[1] : ''
+        if (!item.carplate) item.carplate = match[2] !== '-' ? match[2] : ''
+      }
+    }
+  }
+  return item
 }
 
 /**
@@ -136,7 +187,9 @@ const getServiceInfo = async (req, res) => {
       return res.status(200).json({ success: true, message: 'ไม่พบรายการข้อมูลการบริการ', data: [] })
     }
 
-    return res.status(200).json({ success: true, data: requests })
+    const formattedRequests = requests.map(r => extractCarInfoFromNote(r))
+
+    return res.status(200).json({ success: true, data: formattedRequests })
 
   } catch (error) {
     console.error('Error in getServiceInfo:', error)
@@ -154,10 +207,72 @@ const getServiceRequestById = async (req, res) => {
       return res.status(400).json({ success: false, message: 'กรุณาระบุ requestId' })
     }
 
-    const data = await findServiceRequestById(requestId)
+    let data = null
+    try {
+      data = await findServiceRequestById(requestId)
+      if (data) {
+        data.requestType = 'pub'
+      }
+    } catch (e) {
+      // ไม่พบในตาราง requestbypub, ลองหาในตาราง requestbyuser แทน
+    }
+
+    if (!data) {
+      const { data: userReq, error: userReqErr } = await supabase
+        .from('requestbyuser')
+        .select('*')
+        .eq('requestid', parseInt(requestId, 10))
+        .maybeSingle()
+
+      if (userReqErr) {
+        console.error('Error fetching requestbyuser:', userReqErr)
+      }
+
+      if (userReq) {
+        // ดึงชื่อโปรไฟล์ของลูกค้าจากตาราง User เพื่อนำมาจำลองเป็น custname
+        let custName = 'ลูกค้า SafeSeat'
+        try {
+          const { data: userProfile } = await supabase
+            .from('User')
+            .select('name')
+            .eq('phoneno', userReq.user_id)
+            .maybeSingle()
+          if (userProfile && userProfile.name) {
+            custName = userProfile.name
+          }
+        } catch (errProfile) {
+          console.warn("Could not load user name for requestbyuser fallback", errProfile)
+        }
+
+        // แปลงฟิลด์ของ requestbyuser ให้ตรงกับโครงสร้างที่หน้าเว็บคาดหวังจาก requestbypub
+        data = {
+          requestid: userReq.requestid,
+          custname: custName,
+          phoneno: userReq.user_id,
+          phoneemer: '',
+          note: userReq.note || '',
+          isladymode: userReq.isladymode,
+          paymentmethod: userReq.paymentmethod,
+          requeststatus: userReq.requeststatus,
+          reqdatetime: userReq.created_at || new Date().toISOString(),
+          requiredcartype: 3, // ค่า Default เป็น Auto
+          pickuplatitude: userReq.pickuplatitude,
+          pickuplongitude: userReq.pickuplongitude,
+          dropofflatitude: userReq.dropofflatitude,
+          dropofflongitude: userReq.dropofflongitude,
+          requestfee: userReq.requestfee,
+          reqdistance: userReq.reqdistance,
+          buddy_team_id: userReq.buddy_team_id,
+          requestType: 'user'
+        }
+      }
+    }
+
     if (!data) {
       return res.status(404).json({ success: false, message: 'ไม่พบข้อมูล request' })
     }
+
+    data = extractCarInfoFromNote(data)
 
     // หากมี buddy_team_id มอบหมายแล้ว ให้โหลดข้อมูลคนขับ
     if (data.buddy_team_id) {
@@ -168,21 +283,38 @@ const getServiceRequestById = async (req, res) => {
         .maybeSingle();
       data.buddyteam = team;
 
-      if (team) {
         // ดึงโปรไฟล์หัวหน้าทีมและผู้ช่วย
-        const { data: leader } = await supabase
+        const { data: leaderRow } = await supabase
           .from('driver')
-          .select('username, firstname, lastname, phone_no, license_plate')
+          .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
           .eq('username', team.leaderid)
           .maybeSingle();
-        const { data: follower } = await supabase
+        const { data: followerRow } = await supabase
           .from('driver')
-          .select('username, firstname, lastname, phone_no')
+          .select('username, firstname, lastname, phoneno')
           .eq('username', team.followerid)
           .maybeSingle();
-        data.leader = leader;
-        data.follower = follower;
-      }
+
+        if (leaderRow) {
+          data.leader = {
+            firstname: leaderRow.firstname,
+            lastname: leaderRow.lastname,
+            phone_no: leaderRow.phoneno,
+            license_plate: leaderRow.drivercar?.carplate || '—'
+          };
+        } else {
+          data.leader = null;
+        }
+
+        if (followerRow) {
+          data.follower = {
+            firstname: followerRow.firstname,
+            lastname: followerRow.lastname,
+            phone_no: followerRow.phoneno
+          };
+        } else {
+          data.follower = null;
+        }
     }
 
     return res.status(200).json({ success: true, data })

@@ -64,14 +64,16 @@ const register = async (req, res) => {
   }
 }
 
-// ── Check Email Handler ─────────────────────────────────────────
+// ── Check Email & Phone & TaxNumber Handler ─────────────────────
 // รับ POST /api/pub/check-email
-// Body: { email: string }
+// Body: { email?: string, pubEmail?: string, phone?: string, pubPhone?: string, taxNumber?: string, taxnumber?: string }
 const checkEmail = async (req, res) => {
   try {
-    const { email } = req.body
-    await pubService.checkEmail(email)
-    res.json({ success: true, message: 'อีเมลนี้สามารถใช้งานได้' })
+    const emailVal = req.body.email || req.body.pubEmail
+    const phoneVal = req.body.phone || req.body.pubPhone
+    const taxVal = req.body.taxNumber || req.body.taxnumber
+    await pubService.checkEmail(emailVal, phoneVal, taxVal)
+    res.json({ success: true, message: 'ข้อมูลสามารถใช้งานได้' })
   } catch (err) {
     res.status(400).json({ success: false, message: err.message })
   }

@@ -33,16 +33,17 @@ class AuthModel {
     return formatDriverDocs(data);
   }
 
-  // ตรวจสอบว่ามี username นี้อยู่ในระบบแล้วหรือยัง
+  // ตรวจสอบว่ามี username นี้อยู่ในระบบแล้วหรือยัง (ยกเว้นผู้ที่ถูกปฏิเสธ)
   static async checkDuplicateUsername(username) {
     const { data, error } = await supabase
       .from('driver')
-      .select('username')
+      .select('username, registerstatus')
       .eq('username', username)
       .maybeSingle();
 
-    if (error) throw error;
-    return !!data;
+    if (error || !data) return false;
+    if (data.registerstatus === 'ปฏิเสธ' || data.registerstatus === 'rejected') return false;
+    return true;
   }
 
   // ดึงสถานะการสมัครสมาชิกของคนขับ
@@ -57,45 +58,114 @@ class AuthModel {
     return data;
   }
 
-  // ตรวจสอบว่ามีอีเมลนี้อยู่ในระบบแล้วหรือยัง
+  // Check if email already exists in driver or pub (excluding rejected)
   static async checkDuplicateEmail(email) {
-    const { data, error } = await supabase
+    if (!email) return false;
+    const { data: driverData } = await supabase
       .from('driver')
-      .select('email')
+      .select('email, registerstatus')
       .eq('email', email)
       .maybeSingle();
 
-    if (error) throw error;
-    return !!data;
+    if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true;
+
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('pubemail, regisstatus')
+      .eq('pubemail', email)
+      .maybeSingle();
+
+    if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true;
+
+    return false;
   }
 
-  // ตรวจสอบว่ามีเบอร์โทรศัพท์นี้อยู่ในระบบแล้วหรือยัง
+  // Check if phone number already exists in driver or pub (excluding rejected)
   static async checkDuplicatePhone(phoneno) {
-    const { data, error } = await supabase
+    if (!phoneno) return false;
+    const { data: driverData } = await supabase
       .from('driver')
-      .select('phoneno')
+      .select('phoneno, registerstatus')
       .eq('phoneno', phoneno)
       .maybeSingle();
 
-    if (error) throw error;
-    return !!data;
+    if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true;
+
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('pubphone, regisstatus')
+      .eq('pubphone', phoneno)
+      .maybeSingle();
+
+    if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true;
+
+    return false;
   }
 
-  // ตรวจสอบว่ามีเลขบัตรประชาชนนี้อยู่ในระบบแล้วหรือยัง
+  // ตรวจสอบว่ามีเลขบัตรประชาชนนี้อยู่ในระบบแล้วหรือยัง (excluding rejected)
   static async checkDuplicateIdCard(idcard) {
     const { data, error } = await supabase
       .from('driver')
-      .select('idcard')
+      .select('idcard, registerstatus')
       .eq('idcard', idcard)
       .maybeSingle();
 
-    if (error) throw error;
-    return !!data;
+    if (error || !data) return false;
+    if (data.registerstatus === 'ปฏิเสธ' || data.registerstatus === 'rejected') return false;
+    return true;
+  }
+
+  // ตรวจสอบว่ามีทะเบียนยานพาหนะนี้อยู่ในระบบแล้วหรือยัง (Normalized เปรียบเทียบ)
+  static async checkDuplicateCarPlate(carPlate) {
+    if (!carPlate) return false;
+    const cleanInput = String(carPlate).replace(/[\s-]/g, '').toLowerCase();
+    const { data, error } = await supabase
+      .from('drivercar')
+      .select('carplate');
+
+    if (error || !data) return false;
+    return data.some(c => c.carplate && String(c.carplate).replace(/[\s-]/g, '').toLowerCase() === cleanInput);
   }
 
   // สมัครสมาชิกคนขับพร้อมทั้งลงทะเบียนข้อมูลรถยนต์
   static async register(driverData, carData) {
-    // 1. เพิ่มข้อมูลรถยนต์ของคนขับก่อน
+    // 0. ตรวจสอบว่าเดิมมีบัญชีที่เคยถูกปฏิเสธอยู่หรือไม่ -> ถ้ามีให้ทำการอัปเดตแทนการ insert ใหม่
+    const { data: existingDriver } = await supabase
+      .from('driver')
+      .select('username, driver_car, registerstatus')
+      .eq('username', driverData.username)
+      .maybeSingle();
+
+    if (existingDriver) {
+      if (existingDriver.driver_car) {
+        await supabase
+          .from('drivercar')
+          .update(carData)
+          .eq('drivercarid', existingDriver.driver_car);
+      }
+      const { data: updatedDriver, error: driverErr } = await supabase
+        .from('driver')
+        .update({
+          ...driverData,
+          registerstatus: 'รอดำเนินการ',
+          regisdate: new Date().toISOString()
+        })
+        .eq('username', driverData.username)
+        .select()
+        .maybeSingle();
+
+      if (driverErr) {
+        console.error("Error resubmitting driver:", driverErr);
+        throw new Error(`ไม่สามารถอัปเดตข้อมูลการสมัครได้: ${driverErr.message}`);
+      }
+
+      return {
+        driver: updatedDriver,
+        car: carData
+      };
+    }
+
+    // 1. เพิ่มข้อมูลรถยนต์ของคนขับใหม่
     const { data: insertedCar, error: carError } = await supabase
       .from('drivercar')
       .insert([carData])
