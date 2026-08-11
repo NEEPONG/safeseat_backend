@@ -38,68 +38,9 @@ class RequestService {
             mappedPaymentMethod = paymentmethod;
         }
 
-        let resolvedDropoffAddress = rawBody.dropoffaddress || rawBody.dropoffname || null;
-        let resolvedPickupAddress = rawBody.pickupaddress || rawBody.pickupname || null;
-
-        if (!resolvedDropoffAddress && dropofflatitude && dropofflongitude) {
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${dropofflatitude}&lon=${dropofflongitude}&accept-language=th`, {
-                    headers: { 'User-Agent': 'SafeSeatBackend/1.0' }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const name = data.name;
-                    const addr = data.address;
-                    if (name && name.trim()) {
-                        resolvedDropoffAddress = name.trim();
-                    } else if (addr) {
-                        const road = addr.road || addr.suburb || addr.neighbourhood;
-                        const city = addr.city || addr.town || addr.province;
-                        if (road && city) resolvedDropoffAddress = `${road}, ${city}`;
-                        else if (road) resolvedDropoffAddress = road;
-                        else if (city) resolvedDropoffAddress = city;
-                    }
-                    if (!resolvedDropoffAddress && data.display_name) {
-                        resolvedDropoffAddress = data.display_name.split(',').slice(0, 2).join(',').trim();
-                    }
-                }
-            } catch (err) {
-                console.error("Reverse geocode dropoff error:", err.message);
-            }
-        }
-
-        if (!resolvedPickupAddress && pickuplatitude && pickuplongitude) {
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${pickuplatitude}&lon=${pickuplongitude}&accept-language=th`, {
-                    headers: { 'User-Agent': 'SafeSeatBackend/1.0' }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const name = data.name;
-                    const addr = data.address;
-                    if (name && name.trim()) {
-                        resolvedPickupAddress = name.trim();
-                    } else if (addr) {
-                        const road = addr.road || addr.suburb || addr.neighbourhood;
-                        const city = addr.city || addr.town || addr.province;
-                        if (road && city) resolvedPickupAddress = `${road}, ${city}`;
-                        else if (road) resolvedPickupAddress = road;
-                        else if (city) resolvedPickupAddress = city;
-                    }
-                    if (!resolvedPickupAddress && data.display_name) {
-                        resolvedPickupAddress = data.display_name.split(',').slice(0, 2).join(',').trim();
-                    }
-                }
-            } catch (err) {
-                console.error("Reverse geocode pickup error:", err.message);
-            }
-        }
-
         const requestPayload = {
             dropofflatitude: parseFloat(dropofflatitude),
             dropofflongitude: parseFloat(dropofflongitude),
-            dropoffaddress: resolvedDropoffAddress,
-            pickupaddress: resolvedPickupAddress,
             isladymode: !!isladymode,
             note: note || null,
             paymentmethod: mappedPaymentMethod,
