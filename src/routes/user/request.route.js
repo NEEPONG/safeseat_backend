@@ -3,7 +3,6 @@ const router = express.Router();
 const requestController = require('../../controllers/user/request.controller');
 
 router.post('/', requestController.createRequest);
-router.get('/user/:userId', requestController.getRequestsByUser);
 router.get('/:id', requestController.getRequestStatus);
 router.delete('/:id', requestController.cancelRequest);
 
