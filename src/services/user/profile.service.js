@@ -42,7 +42,6 @@ class ProfileService {
         if (fieldsToUpdate.email !== undefined) updates.email = fieldsToUpdate.email;
         if (fieldsToUpdate.mainaddress !== undefined) updates.mainaddress = fieldsToUpdate.mainaddress;
         if (fieldsToUpdate.profileimagepath !== undefined) updates.profileimagepath = fieldsToUpdate.profileimagepath;
-        if (fieldsToUpdate.walletbalance !== undefined) updates.walletbalance = parseFloat(fieldsToUpdate.walletbalance);
 
         const { data: updatedUser, error } = await supabase
             .from('User')
