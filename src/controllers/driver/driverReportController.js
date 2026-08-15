@@ -4,10 +4,12 @@ class DriverReportController {
   // GET /api/driver-reports
   static async getReports(req, res) {
     try {
-      const { username } = req.query;
+      const { username, userId } = req.query;
       let reports;
-      
-      if (username) {
+
+      if (userId) {
+        reports = await DriverReportModel.getReportsByUser(userId);
+      } else if (username) {
         reports = await DriverReportModel.getReportsByDriver(username);
       } else {
         reports = await DriverReportModel.getAllReports();

@@ -93,6 +93,29 @@ class DriverReportModel {
     });
   }
 
+  // ดึงรายงานที่ผู้ใช้ (ลูกค้า) เป็นผู้แจ้ง โดยดูจาก requestbyuser.user_id
+  static async getReportsByUser(userId) {
+    if (!userId) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('driverreport')
+        .select('*, requestbyuser!inner(*)')
+        .eq('requestbyuser.user_id', userId)
+        .order('reportdate', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    } catch (e) {
+      console.warn("Join filter in getReportsByUser failed, filtering in JS:", e.message);
+      const allReports = await this.getAllReports();
+      return allReports.filter(report => {
+        const req = report.requestbyuser;
+        return req && req.user_id === userId;
+      });
+    }
+  }
+
   // สร้างรายงานใหม่
   static async createReport(reportData) {
     const { data, error } = await supabase

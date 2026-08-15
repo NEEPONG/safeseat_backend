@@ -98,23 +98,128 @@ class RequestService {
             request.buddyteam = team;
 
             if (team) {
-                // Fetch leader and follower driver profiles
+                // Fetch leader and follower driver profiles.
+                // NOTE: driver table stores phone in `phoneno` and the license plate
+                // lives in the `drivercar` table (`carplate`) joined via `driver_car`.
+                // Map them to the `phone_no` / `license_plate` keys the mini app expects.
                 const { data: leader } = await supabase
                     .from('driver')
-                    .select('username, firstname, lastname, phone_no, license_plate')
+                    .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
                     .eq('username', team.leaderid)
                     .maybeSingle();
                 const { data: follower } = await supabase
                     .from('driver')
-                    .select('username, firstname, lastname, phone_no')
+                    .select('username, firstname, lastname, phoneno')
                     .eq('username', team.followerid)
                     .maybeSingle();
-                request.leader = leader;
-                request.follower = follower;
+                if (leader) {
+                    request.leader = {
+                        username: leader.username,
+                        firstname: leader.firstname,
+                        lastname: leader.lastname,
+                        phone_no: leader.phoneno,
+                        license_plate: leader.drivercar?.carplate || null,
+                    };
+                }
+                if (follower) {
+                    request.follower = {
+                        username: follower.username,
+                        firstname: follower.firstname,
+                        lastname: follower.lastname,
+                        phone_no: follower.phoneno,
+                    };
+                }
             }
         }
 
         return request;
+    }
+
+    /**
+     * Get all requests of a user filtered by status type.
+     * @param {string} userId User phone number
+     * @param {string} type 'active' | 'completed' | 'cancelled' (optional, default all)
+     * @returns {Promise<Array>} List of requests enriched with buddy team + driver profiles
+     */
+    static async getRequestsByUser(userId, type) {
+        if (!userId) {
+            throw new Error('Please provide user_id');
+        }
+
+        let statuses = null;
+        if (type === 'active') {
+            statuses = ['กำลังค้นหาคนขับ', 'กำลังไปรับ', 'ถึงจุดรับแล้ว', 'ระหว่างเดินทาง'];
+        } else if (type === 'completed') {
+            statuses = ['เสร็จสิ้น'];
+        } else if (type === 'cancelled') {
+            statuses = ['ยกเลิก'];
+        }
+
+        let query = supabase
+            .from('requestbyuser')
+            .select('*')
+            .eq('user_id', userId)
+            .order('reqdatetime', { ascending: false });
+
+        if (statuses && statuses.length === 1) {
+            query = query.eq('requeststatus', statuses[0]);
+        } else if (statuses && statuses.length > 1) {
+            query = query.in('requeststatus', statuses);
+        }
+
+        const { data: requests, error } = await query;
+
+        if (error) {
+            console.error("Error fetching user requests:", error);
+            throw new Error(error.message);
+        }
+
+        // Enrich each request with buddy team + driver profiles (same shape as getRequestStatus)
+        const enriched = [];
+        for (const request of requests || []) {
+            if (request.buddy_team_id) {
+                const { data: team } = await supabase
+                    .from('buddyteam')
+                    .select('*')
+                    .eq('buddyteamid', request.buddy_team_id)
+                    .maybeSingle();
+                request.buddyteam = team;
+
+                if (team) {
+                    // Same enrichment as getRequestStatus (see note above about phoneno / drivercar.carplate)
+                    const { data: leader } = await supabase
+                        .from('driver')
+                        .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
+                        .eq('username', team.leaderid)
+                        .maybeSingle();
+                    const { data: follower } = await supabase
+                        .from('driver')
+                        .select('username, firstname, lastname, phoneno')
+                        .eq('username', team.followerid)
+                        .maybeSingle();
+                    if (leader) {
+                        request.leader = {
+                            username: leader.username,
+                            firstname: leader.firstname,
+                            lastname: leader.lastname,
+                            phone_no: leader.phoneno,
+                            license_plate: leader.drivercar?.carplate || null,
+                        };
+                    }
+                    if (follower) {
+                        request.follower = {
+                            username: follower.username,
+                            firstname: follower.firstname,
+                            lastname: follower.lastname,
+                            phone_no: follower.phoneno,
+                        };
+                    }
+                }
+            }
+            enriched.push(request);
+        }
+
+        return enriched;
     }
 
     /**
