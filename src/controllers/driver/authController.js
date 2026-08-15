@@ -1,17 +1,25 @@
 const AuthModel = require('../../models/driver/authModel');
 const { uploadToSupabase, getRelativePath, formatDriverDocs, compressPath } = require('../../utils/supabaseStorage');
 const bcrypt = require('bcrypt');
+const { generateToken } = require('../../middlewares/authMiddleware');
 
 class AuthController {
   static async login(req, res) {
     try {
       const { username, password, latitude, longitude } = req.body;
       const user = await AuthModel.login(username, password, latitude, longitude);
-      
+
       if (!user) {
         return res.status(401).json({ error: 'Invalid username or password' });
       }
-      return res.status(200).json(user);
+
+      const token = generateToken({
+        id: user.driverid || user.id,
+        username: user.username || user.phoneno,
+        role: 'driver'
+      });
+
+      return res.status(200).json({ ...user, token });
     } catch (error) {
       console.error('Login error:', error);
       return res.status(500).json({ error: 'Internal server error' });
@@ -102,8 +110,8 @@ class AuthController {
       if (!email || email.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกอีเมล (email)' });
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return res.status(400).json({ error: 'อีเมลไม่ถูกต้องตามรูปแบบมาตรฐาน' });
+      if (!/^[a-z0-9_.]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) {
+        return res.status(400).json({ error: 'อีเมลต้องเป็นรูปแบบมาตรฐานสากลเท่านั้น' });
       }
 
       if (!gender) {
@@ -127,13 +135,13 @@ class AuthController {
       if (!password || password.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกรหัสผ่าน (password)' });
       }
-      if (!/^[a-zA-Z0-9!#_.]{6,50}$/.test(password)) {
-        return res.status(400).json({ error: 'รหัสผ่านต้องเป็นภาษาอังกฤษ ตัวเลข และอักขระพิเศษ [!#_.] เท่านั้น ความยาว 6 - 50 ตัวอักษร และไม่มีช่องว่าง' });
+      if (!/^(?=.*[!#_.])[a-zA-Z0-9!#_.]{8,50}$/.test(password)) {
+        return res.status(400).json({ error: 'รหัสผ่านต้องเป็นภาษาอังกฤษ ตัวเลข และรวมอักขระพิเศษ [!#_.] เท่านั้น ความยาว 8 - 50 ตัวอักษร และไม่มีช่องว่าง' });
       }
 
-      if (!driverSkills || 
-          (Array.isArray(driverSkills) && driverSkills.length === 0) || 
-          (typeof driverSkills === 'string' && driverSkills.trim() === '')) {
+      if (!driverSkills ||
+        (Array.isArray(driverSkills) && driverSkills.length === 0) ||
+        (typeof driverSkills === 'string' && driverSkills.trim() === '')) {
         return res.status(400).json({ error: 'กรุณาเลือกความสามารถในการขับรถยนต์ (driverSkills) อย่างน้อย 1 ประเภท' });
       }
 
@@ -278,7 +286,7 @@ class AuthController {
 
     } catch (error) {
       console.error('Registration error:', error);
-      return res.status(500).json({ error: error.message || 'Internal server error' });
+      return res.status(500).json({ error: error.message || 'Internal server error', details: error });
     }
   }
   static async checkCredentials(req, res) {
@@ -323,7 +331,7 @@ class AuthController {
   static async getStatus(req, res) {
     try {
       const { username } = req.params;
-      
+
       if (!username) {
         return res.status(400).json({ error: 'Username is required' });
       }
@@ -339,7 +347,7 @@ class AuthController {
       });
     } catch (error) {
       console.error('Get status error:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: error.message || 'Internal server error', details: error });
     }
   }
 }

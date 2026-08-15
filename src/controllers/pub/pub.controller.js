@@ -12,6 +12,7 @@
 
 const pubService = require('../../services/pub/pub.service')
 const { uploadToSupabase } = require('../../utils/supabaseStorage')
+const { generateToken } = require('../../middlewares/authMiddleware')
 
 // ── Login Handler ─────────────────────────────────────────────
 // รับ POST /api/pub/login
@@ -24,9 +25,15 @@ const login = async (req, res) => {
     // ส่งให้ service ตรวจสอบ — ถ้าผิดพลาด service จะ throw Error
     const pub = await pubService.loginPub(username, password)
 
-    // สำเร็จ: ส่งข้อมูล pub กลับไปให้ Frontend
-    // Frontend เก็บลง localStorage ใช้เป็น session
-    res.json({ success: true, data: pub })
+    // สร้าง JWT Token สำหรับผู้ใช้บทบาท pub
+    const token = generateToken({
+      username: pub.username,
+      pubName: pub.pubname,
+      role: 'pub'
+    })
+
+    // สำเร็จ: ส่งข้อมูล pub พร้อม token กลับไปให้ Frontend
+    res.json({ success: true, token, data: pub })
   } catch (err) {
     // เกิด error: ส่ง HTTP 400 พร้อมข้อความ error
     // 400 Bad Request = ข้อมูลที่ส่งมาไม่ถูกต้อง
@@ -42,15 +49,15 @@ const register = async (req, res) => {
     // นำข้อมูล text fields มาใส่ใน pubData
     const pubData = { ...req.body }
 
-    // อัปโหลดรูปภาพไปยัง Supabase Storage และเก็บ URL แทน path ของเครื่อง local
+    // อัปโหลดรูปภาพไปยัง Supabase Storage และเก็บ URL ทั้งสองภาพในรูปแบบ JSON string
     if (req.files) {
-      if (req.files.regisImagePath) {
-        pubData.regisImagePath = await uploadToSupabase(req.files.regisImagePath[0], 'images', 'pubs/profile')
-      }
-      if (req.files.pubImagePath) {
-        // อัปโหลดเพื่อเคลียร์โฟลเดอร์ uploads และเผื่อกรณีที่ต้องการใช้งานรูปหน้าร้านในอนาคต
-        await uploadToSupabase(req.files.pubImagePath[0], 'images', 'pubs/storefront')
-      }
+      const regisImage = req.files.regisImagePath ? await uploadToSupabase(req.files.regisImagePath[0], 'images', 'pubs/profile') : null
+      const pubImage = req.files.pubImagePath ? await uploadToSupabase(req.files.pubImagePath[0], 'images', 'pubs/storefront') : null
+      
+      pubData.regisImagePath = JSON.stringify({
+        license: regisImage,
+        storefront: pubImage
+      })
     }
 
     // ส่งข้อมูลที่เตรียมไว้ไปให้ service บันทึกลงฐานข้อมูล

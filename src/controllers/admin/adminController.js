@@ -1,5 +1,6 @@
 const { supabase } = require('../../config/supabase');
 const bcrypt = require('bcrypt');
+const { generateToken } = require('../../middlewares/authMiddleware');
 
 class AdminController {
   // POST /api/admin/login
@@ -33,9 +34,16 @@ class AdminController {
       const adminData = { ...admin };
       delete adminData.password;
 
+      const token = generateToken({
+        id: adminData.adminid || adminData.id,
+        username: adminData.username,
+        role: 'admin'
+      });
+
       return res.status(200).json({
         success: true,
         message: 'เข้าสู่ระบบสำเร็จ',
+        token,
         data: adminData
       });
     } catch (err) {
@@ -180,10 +188,27 @@ class AdminController {
 
       const { getFullStorageUrl } = require('../../utils/supabaseStorage');
       let pubsData = (data || []).map(pub => {
+        let licenseUrl = null;
+        let storefrontUrl = null;
+
+        if (pub.regisimagepath) {
+          try {
+            const parsed = JSON.parse(pub.regisimagepath);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              licenseUrl = parsed.license ? getFullStorageUrl(parsed.license) : null;
+              storefrontUrl = parsed.storefront ? getFullStorageUrl(parsed.storefront) : null;
+            } else {
+              licenseUrl = getFullStorageUrl(pub.regisimagepath);
+            }
+          } catch {
+            licenseUrl = getFullStorageUrl(pub.regisimagepath);
+          }
+        }
+
         return {
           ...pub,
-          regisimagepath: pub.regisimagepath ? getFullStorageUrl(pub.regisimagepath) : null,
-          pubimagepath: pub.pubimagepath ? getFullStorageUrl(pub.pubimagepath) : null,
+          regisimagepath: licenseUrl,
+          pubimagepath: storefrontUrl,
         };
       });
 

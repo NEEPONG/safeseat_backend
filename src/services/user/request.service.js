@@ -88,6 +88,24 @@ class RequestService {
             throw new Error('Request not found');
         }
 
+        // Fetch customer profile name
+        let custName = 'ลูกค้า SafeSeat'
+        if (request.user_id) {
+            try {
+                const { data: userProfile } = await supabase
+                    .from('User')
+                    .select('name, phoneno')
+                    .eq('phoneno', request.user_id)
+                    .maybeSingle();
+                if (userProfile && userProfile.name) {
+                    custName = userProfile.name;
+                }
+            } catch (errProfile) {
+                console.warn("Could not load user name for requestbyuser:", errProfile);
+            }
+        }
+        request.custname = custName;
+
         // If a driver buddy team is assigned, load its details
         if (request.buddy_team_id) {
             const { data: team } = await supabase

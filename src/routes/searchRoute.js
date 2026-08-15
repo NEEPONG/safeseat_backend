@@ -1,13 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const { validateSearchQuery } = require('../middlewares/validate');
 
 // Route for searching places using SerpApi (with Nominatim fallback)
-router.get('/places', async (req, res) => {
+router.get('/places', validateSearchQuery, async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q) {
-      return res.status(400).json({ error: 'Query parameter "q" is required' });
-    }
 
     const apiKey = process.env.SERPAPI_API_KEY;
 

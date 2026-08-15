@@ -18,11 +18,14 @@ const bcrypt = require('bcrypt')
 // ── Regex Patterns ────────────────────────────────────────────
 // ตัวแปร regex นิยามนอก function เพื่อ compile ครั้งเดียว (ประหยัด memory)
 
-// username: ตัวอักษรภาษาอังกฤษหรือตัวเลข 2-50 ตัว ไม่มีช่องว่าง
-const usernameRegex = /^[a-zA-Z0-9]{2,50}$/
+// username: ตัวอักษรภาษาอังกฤษหรือตัวเลข 8-50 ตัว ไม่มีช่องว่าง
+const usernameRegex = /^[a-zA-Z0-9]{8,50}$/
 
-// password: ตัวอักษร ตัวเลข และ ! # _ . เท่านั้น 2-50 ตัว
-const passwordRegex = /^[a-zA-Z0-9!#_.]{2,50}$/
+// password: ตัวอักษร ตัวเลข และอักขระพิเศษ ! # _ . รวม 8-50 ตัว และมีอักขระพิเศษอย่างน้อย 1 ตัว
+const passwordRegex = /^(?=.*[!#_.])[a-zA-Z0-9!#_.]{8,50}$/
+
+// email: บังคับรูปแบบอีเมลมาตรฐานภาษาอังกฤษตัวพิมพ์เล็กเท่านั้น ห้ามมีอักษรภาษาไทย และมีได้แค่ _ .
+const emailRegex = /^[a-z0-9_.]+@[a-z0-9.-]+\.[a-z]{2,}$/
 
 // ════════════════════════════════════════════════════════════════
 // registerPub — ลงทะเบียน Pub ใหม่
@@ -57,13 +60,17 @@ const registerPub = async (pubData) => {
 
   // ── Validation 2: ตรวจสอบรูปแบบ username ──────────────────
   if (!usernameRegex.test(username)) {
-    throw new Error('ชื่อผู้ใช้ต้องเป็นภาษาอังกฤษหรือตัวเลข 2–50 ตัว และห้ามมีช่องว่าง')
+    throw new Error('ชื่อผู้ใช้ต้องเป็นภาษาอังกฤษหรือตัวเลข 8–50 ตัว และห้ามมีช่องว่าง')
   }
 
   // ── Validation 3: ตรวจสอบรูปแบบ password ──────────────────
-  // อนุญาตเฉพาะ a-z, A-Z, 0-9 และอักขระพิเศษ ! # _ .
   if (!passwordRegex.test(password)) {
-    throw new Error('รหัสผ่านต้องเป็นภาษาอังกฤษ ตัวเลข และ ! # _ . เท่านั้น')
+    throw new Error('รหัสผ่านต้องเป็นอักษรภาษาอังกฤษ ตัวเลข และรวมอักขระพิเศษ [!#_.] มีความยาว 8–50 ตัวอักษร')
+  }
+
+  // ── Validation 3.5: ตรวจสอบรูปแบบ email ─────────────────
+  if (!emailRegex.test(pubEmail)) {
+    throw new Error('อีเมลต้องเป็นรูปแบบมาตรฐานสากลเท่านั้น')
   }
 
   // ── Validation 4: ตรวจสอบเบอร์โทรศัพท์ ────────────────────
@@ -84,9 +91,9 @@ const registerPub = async (pubData) => {
   }
 
   // ── Validation 7: เลขที่บัญชีธนาคาร ────────────────────────
-  // ยอมรับตัวเลข 1-150 หลัก
-  if (!/^[0-9]{1,150}$/.test(bankAccountNo)) {
-    throw new Error('เลขที่บัญชีต้องเป็นตัวเลขเท่านั้น')
+  // ยอมรับตัวเลข 10-12 หลัก
+  if (!/^[0-9]{10,12}$/.test(bankAccountNo)) {
+    throw new Error('เลขที่บัญชีต้องเป็นตัวเลข 10-12 หลักเท่านั้น')
   }
 
   // ── Validation 8: ชื่อบัญชีธนาคาร ──────────────────────────
@@ -120,7 +127,7 @@ const registerPub = async (pubData) => {
           pubaddresslng: lng,
           regisimagepath: regisImagePath || existing.regisimagepath,
           regisstatus: 'รอดำเนินการ',
-          regisdate: new Date(),
+          regisdate: new Date().toISOString(),
         })
         .eq('username', username)
         .select()
@@ -177,8 +184,8 @@ const registerPub = async (pubData) => {
 
     // กำหนด status เริ่มต้นเป็น 'รอดำเนินการ' (รอ admin อนุมัติ)
     regisstatus: 'รอดำเนินการ',
-    // บันทึกวันที่สมัคร (JavaScript Date object)
-    regisdate:   new Date(),
+    // บันทึกวันที่สมัคร (ISO String)
+    regisdate:   new Date().toISOString(),
   })
 }
 

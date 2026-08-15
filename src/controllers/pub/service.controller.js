@@ -203,21 +203,14 @@ const getServiceInfo = async (req, res) => {
 const getServiceRequestById = async (req, res) => {
   try {
     const { requestId } = req.params
+    const targetType = req.query.type // 'user' or 'pub'
+
     if (!requestId) {
       return res.status(400).json({ success: false, message: 'กรุณาระบุ requestId' })
     }
 
-    let data = null
-    try {
-      data = await findServiceRequestById(requestId)
-      if (data) {
-        data.requestType = 'pub'
-      }
-    } catch (e) {
-      // ไม่พบในตาราง requestbypub, ลองหาในตาราง requestbyuser แทน
-    }
-
-    if (!data) {
+    // Helper function to query requestbyuser
+    const queryUserRequest = async () => {
       const { data: userReq, error: userReqErr } = await supabase
         .from('requestbyuser')
         .select('*')
@@ -229,7 +222,6 @@ const getServiceRequestById = async (req, res) => {
       }
 
       if (userReq) {
-        // ดึงชื่อโปรไฟล์ของลูกค้าจากตาราง User เพื่อนำมาจำลองเป็น custname
         let custName = 'ลูกค้า SafeSeat'
         try {
           const { data: userProfile } = await supabase
@@ -244,8 +236,7 @@ const getServiceRequestById = async (req, res) => {
           console.warn("Could not load user name for requestbyuser fallback", errProfile)
         }
 
-        // แปลงฟิลด์ของ requestbyuser ให้ตรงกับโครงสร้างที่หน้าเว็บคาดหวังจาก requestbypub
-        data = {
+        return {
           requestid: userReq.requestid,
           custname: custName,
           phoneno: userReq.user_id,
@@ -266,63 +257,124 @@ const getServiceRequestById = async (req, res) => {
           requestType: 'user'
         }
       }
+      return null
     }
 
+    // Helper function to query requestbypub
+    const queryPubRequest = async () => {
+      try {
+        const pubReq = await findServiceRequestById(requestId)
+        if (pubReq) {
+          pubReq.requestType = 'pub'
+          return pubReq
+        }
+      } catch (e) {
+        // ไม่พบในตาราง requestbypub
+      }
+      return null
+    }
+
+    // If explicit type requested (from choice click)
+    if (targetType === 'user') {
+      const uData = await queryUserRequest()
+      if (!uData) return res.status(404).json({ success: false, message: 'ไม่พบข้อมูล request' })
+      return processAndReturnRequest(uData, res)
+    } else if (targetType === 'pub') {
+      const pData = await queryPubRequest()
+      if (!pData) return res.status(404).json({ success: false, message: 'ไม่พบข้อมูล request' })
+      return processAndReturnRequest(pData, res)
+    }
+
+    // Otherwise check both tables to handle duplicate ID collisions
+    const [userResult, pubResult] = await Promise.all([queryUserRequest(), queryPubRequest()])
+
+    if (userResult && pubResult) {
+      // Duplicate ID detected in BOTH tables! Return multiple options for user choice.
+      return res.status(200).json({
+        success: true,
+        isMultiple: true,
+        matches: [userResult, pubResult]
+      })
+    }
+
+    const data = userResult || pubResult
     if (!data) {
       return res.status(404).json({ success: false, message: 'ไม่พบข้อมูล request' })
     }
 
-    data = extractCarInfoFromNote(data)
-
-    // หากมี buddy_team_id มอบหมายแล้ว ให้โหลดข้อมูลคนขับ
-    if (data.buddy_team_id) {
-      const { data: team } = await supabase
-        .from('buddyteam')
-        .select('*')
-        .eq('buddyteamid', data.buddy_team_id)
-        .maybeSingle();
-      data.buddyteam = team;
-
-        // ดึงโปรไฟล์หัวหน้าทีมและผู้ช่วย
-        const { data: leaderRow } = await supabase
-          .from('driver')
-          .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
-          .eq('username', team.leaderid)
-          .maybeSingle();
-        const { data: followerRow } = await supabase
-          .from('driver')
-          .select('username, firstname, lastname, phoneno')
-          .eq('username', team.followerid)
-          .maybeSingle();
-
-        if (leaderRow) {
-          data.leader = {
-            firstname: leaderRow.firstname,
-            lastname: leaderRow.lastname,
-            phone_no: leaderRow.phoneno,
-            license_plate: leaderRow.drivercar?.carplate || '—'
-          };
-        } else {
-          data.leader = null;
-        }
-
-        if (followerRow) {
-          data.follower = {
-            firstname: followerRow.firstname,
-            lastname: followerRow.lastname,
-            phone_no: followerRow.phoneno
-          };
-        } else {
-          data.follower = null;
-        }
-    }
-
-    return res.status(200).json({ success: true, data })
+    return processAndReturnRequest(data, res)
   } catch (error) {
     console.error('Error in getServiceRequestById:', error)
     return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด: ' + error.message })
   }
 }
+
+// Helper to populate driver team info and respond
+const processAndReturnRequest = async (dataInput, res) => {
+  let data = extractCarInfoFromNote(dataInput)
+
+  // ดึงข้อมูลร้านค้า / ผับ เพิ่มเติมถ้าเป็นคำขอจากฝั่งผับ
+  if (data.pub_id) {
+    try {
+      const { data: pubRow } = await supabase
+        .from('pub')
+        .select('username, pubname, pubphone, pubemail')
+        .eq('username', data.pub_id)
+        .maybeSingle()
+      if (pubRow) {
+        data.pub = pubRow
+      }
+    } catch (e) {
+      console.warn("Could not fetch pub details:", e)
+    }
+  }
+
+  if (data.buddy_team_id) {
+    const { data: team } = await supabase
+      .from('buddyteam')
+      .select('*')
+      .eq('buddyteamid', data.buddy_team_id)
+      .maybeSingle()
+    data.buddyteam = team
+
+    if (team) {
+      const { data: leaderRow } = await supabase
+        .from('driver')
+        .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
+        .eq('username', team.leaderid)
+        .maybeSingle()
+      const { data: followerRow } = await supabase
+        .from('driver')
+        .select('username, firstname, lastname, phoneno')
+        .eq('username', team.followerid)
+        .maybeSingle()
+
+      if (leaderRow) {
+        data.leader = {
+          firstname: leaderRow.firstname,
+          lastname: leaderRow.lastname,
+          phone_no: leaderRow.phoneno,
+          license_plate: leaderRow.drivercar?.carplate || '—'
+        }
+      } else {
+        data.leader = null
+      }
+
+      if (followerRow) {
+        data.follower = {
+          firstname: followerRow.firstname,
+          lastname: followerRow.lastname,
+          phone_no: followerRow.phoneno
+        }
+      } else {
+        data.follower = null
+      }
+    }
+  }
+
+  return res.status(200).json({ success: true, isMultiple: false, data })
+}
+
 
 /**
  * จำลองขั้นตอนการเดินทางสำหรับรายการเรียกรถของ Pub

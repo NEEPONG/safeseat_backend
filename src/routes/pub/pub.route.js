@@ -25,6 +25,9 @@ const { login, register, checkEmail, getStatus, getProfile } = require('../../co
 
 const { requestDriver, getServiceInfo, getServiceRequestById, simulateStep } = require('../../controllers/pub/service.controller')
 
+const { validateServiceRequest } = require('../../middlewares/validate')
+const { authenticateToken } = require('../../middlewares/authMiddleware')
+
 // ── Endpoints ─────────────────────────────────────────────────
 
 // POST /api/pub/login
@@ -56,15 +59,15 @@ router.get('/status/:username', getStatus)
 // Params: username
 // Response: { success: true, data: pubProfileObject } (ไม่รวม password)
 // ใช้แสดงข้อมูล pub ทั้งหมดสำหรับ dashboard หรือ profile page
-router.get('/profile/:username', getProfile)
+router.get('/profile/:username', authenticateToken, getProfile)
 
 // POST /api/pub/request-driver
 // Body: { pubUsername, custName, phoneNo, phoneEmer, carType, dropoffLatitude, dropoffLongitude, isLadyMode, note, paymentMethod }
-router.post('/request-driver', requestDriver)
+router.post('/request-driver', authenticateToken, validateServiceRequest, requestDriver)
 
 // GET /api/pub/service-info/:username
 // Params: username
-router.get('/service-info/:username', getServiceInfo)
+router.get('/service-info/:username', authenticateToken, getServiceInfo)
 
 // GET /api/pub/service-request/:requestId
 // Params: requestId — ดึง request เดียวสำหรับ polling สถานะ (หน้า Waiting)
