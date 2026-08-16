@@ -3,8 +3,10 @@ const cors = require('cors');
 
 const authRoutes = require('./routes/driver/authRoutes');
 const userRoutes = require('./routes/driver/userRoutes');
+const vehicleRoutes = require('./routes/driver/vehicleRoutes');
 const walletRoutes = require('./routes/driver/walletRoutes');
 const buddyRequestRoutes = require('./routes/driver/buddyRequestRoutes');
+const jobRoutes = require('./routes/driver/jobRoutes');
 const driverReportRoutes = require('./routes/driver/driverReportRoutes');
 const userReportRoutes = require('./routes/driver/userReportRoutes');
 
@@ -16,8 +18,10 @@ app.use(express.json());
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/buddy-team', buddyRequestRoutes);
+app.use('/api/jobs', jobRoutes);
 app.use('/api/driver-reports', driverReportRoutes);
 app.use('/api/user-reports', userReportRoutes);
 
