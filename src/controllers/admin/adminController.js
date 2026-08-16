@@ -1,6 +1,7 @@
-const { supabase } = require('../../config/supabase');
+const AdminModel = require('../../models/admin/adminModel');
 const bcrypt = require('bcrypt');
 const { generateToken } = require('../../middlewares/authMiddleware');
+const { formatDriverDocs, getFullStorageUrl } = require('../../utils/supabaseStorage');
 
 class AdminController {
   // POST /api/admin/login
@@ -12,14 +13,10 @@ class AdminController {
         return res.status(400).json({ error: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' });
       }
 
-      // ค้นหาผู้ดูแลระบบจากตาราง admin
-      const { data: admin, error } = await supabase
-        .from('admin')
-        .select('*')
-        .eq('username', username)
-        .maybeSingle();
+      // ค้นหาผู้ดูแลระบบจากตาราง admin ผ่าน AdminModel
+      const admin = await AdminModel.findAdminByUsername(username);
 
-      if (error || !admin) {
+      if (!admin) {
         return res.status(401).json({ error: 'ไม่พบข้อมูลผู้ดูแลระบบในระบบ' });
       }
 
@@ -55,84 +52,10 @@ class AdminController {
   // GET /api/admin/stats
   static async getStats(req, res) {
     try {
-      // 1. สถิติคนขับ
-      const { count: driverPending } = await supabase
-        .from('driver')
-        .select('*', { count: 'exact', head: true })
-        .eq('registerstatus', 'รอดำเนินการ');
-
-      const { count: driverApproved } = await supabase
-        .from('driver')
-        .select('*', { count: 'exact', head: true })
-        .eq('registerstatus', 'อนุมัติแล้ว');
-
-      const { count: driverRejected } = await supabase
-        .from('driver')
-        .select('*', { count: 'exact', head: true })
-        .eq('registerstatus', 'ปฏิเสธ');
-
-      // 2. สถิติตุ๊กร้านค้า / สถานบันเทิง
-      const { count: pubPending } = await supabase
-        .from('pub')
-        .select('*', { count: 'exact', head: true })
-        .or('regisstatus.eq.รอดำเนินการ,regisstatus.eq.pending');
-
-      const { count: pubApproved } = await supabase
-        .from('pub')
-        .select('*', { count: 'exact', head: true })
-        .or('regisstatus.eq.อนุมัติแล้ว,regisstatus.eq.approved');
-
-      const { count: pubRejected } = await supabase
-        .from('pub')
-        .select('*', { count: 'exact', head: true })
-        .or('regisstatus.eq.ปฏิเสธ,regisstatus.eq.rejected');
-
-      // 3. สถิติรายงานคนขับ
-      const { count: driverReportPending } = await supabase
-        .from('driverreport')
-        .select('*', { count: 'exact', head: true })
-        .eq('reportstatus', 'กำลังดำเนินการ');
-
-      const { count: driverReportApproved } = await supabase
-        .from('driverreport')
-        .select('*', { count: 'exact', head: true })
-        .or('reportstatus.eq.อนุมัติแล้ว,reportstatus.eq.แก้ไขแล้ว');
-
-      // 4. สถิติรายงานลูกค้า / ผู้ใช้
-      const { count: userReportPending } = await supabase
-        .from('userreport')
-        .select('*', { count: 'exact', head: true })
-        .eq('reportstatus', 'กำลังดำเนินการ');
-
-      const { count: userReportApproved } = await supabase
-        .from('userreport')
-        .select('*', { count: 'exact', head: true })
-        .or('reportstatus.eq.อนุมัติแล้ว,reportstatus.eq.แก้ไขแล้ว');
-
+      const statsData = await AdminModel.getStats();
       return res.status(200).json({
         success: true,
-        data: {
-          drivers: {
-            pending: driverPending || 0,
-            approved: driverApproved || 0,
-            rejected: driverRejected || 0,
-            total: (driverPending || 0) + (driverApproved || 0) + (driverRejected || 0)
-          },
-          pubs: {
-            pending: pubPending || 0,
-            approved: pubApproved || 0,
-            rejected: pubRejected || 0,
-            total: (pubPending || 0) + (pubApproved || 0) + (pubRejected || 0)
-          },
-          driverReports: {
-            pending: driverReportPending || 0,
-            total: (driverReportPending || 0) + (driverReportApproved || 0)
-          },
-          userReports: {
-            pending: userReportPending || 0,
-            total: (userReportPending || 0) + (userReportApproved || 0)
-          }
-        }
+        data: statsData
       });
     } catch (err) {
       console.error("Admin stats fetch error:", err);
@@ -143,18 +66,10 @@ class AdminController {
   // GET /api/admin/drivers
   static async getDrivers(req, res) {
     try {
-      // ดึงรายชื่อคนขับพร้อมข้อมูลรถยนต์ (รวมทุกสถานะ)
-      const { data, error } = await supabase
-        .from('driver')
-        .select('*, drivercar:driver_car(*)')
-        .order('regisdate', { ascending: true });
-
-      if (error) throw error;
-
-      const { formatDriverDocs } = require('../../utils/supabaseStorage');
+      const data = await AdminModel.getAllDrivers();
       let formattedData = (data || []).map(driver => formatDriverDocs(driver));
 
-      // เรียงลำดับ: สถานะรอดำเนินการขึ้นก่อน ตามด้วยลำดับวันที่สมัครก่อน (น้อยไปมาก)
+      // เรียงลำดับ: สถานะรอดำเนินการขึ้นก่อน ตามด้วยลำดับวันที่สมัครก่อน
       formattedData.sort((a, b) => {
         const aPending = a.registerstatus === 'รอดำเนินการ' || a.registerstatus === 'pending';
         const bPending = b.registerstatus === 'รอดำเนินการ' || b.registerstatus === 'pending';
@@ -178,15 +93,7 @@ class AdminController {
   // GET /api/admin/pubs
   static async getPubs(req, res) {
     try {
-      // ดึงรายชื่อสถานประกอบการ (รวมทุกสถานะ)
-      const { data, error } = await supabase
-        .from('pub')
-        .select('*')
-        .order('regisdate', { ascending: true });
-
-      if (error) throw error;
-
-      const { getFullStorageUrl } = require('../../utils/supabaseStorage');
+      const data = await AdminModel.getAllPubs();
       let pubsData = (data || []).map(pub => {
         let licenseUrl = null;
         let storefrontUrl = null;
@@ -212,7 +119,7 @@ class AdminController {
         };
       });
 
-      // เรียงลำดับ: สถานะรอดำเนินการ (pending) ขึ้นก่อน ตามด้วยลำดับวันที่สมัครก่อน
+      // เรียงลำดับ: สถานะรอดำเนินการขึ้นก่อน ตามด้วยลำดับวันที่สมัครก่อน
       pubsData.sort((a, b) => {
         const aPending = a.regisstatus === 'pending' || a.regisstatus === 'รอดำเนินการ';
         const bPending = b.regisstatus === 'pending' || b.regisstatus === 'รอดำเนินการ';
@@ -237,7 +144,7 @@ class AdminController {
   static async updateDriverStatus(req, res) {
     try {
       const { username } = req.params;
-      const { status } = req.body; // 'อนุมัติแล้ว' หรือ 'ปฏิเสธ' หรือ 'รอดำเนินการ'
+      const { status } = req.body;
 
       if (!status || !['อนุมัติแล้ว', 'ปฏิเสธ', 'รอดำเนินการ', 'approved', 'rejected', 'pending'].includes(status)) {
         return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
@@ -248,14 +155,7 @@ class AdminController {
       if (status === 'rejected') thaiStatus = 'ปฏิเสธ';
       if (status === 'pending') thaiStatus = 'รอดำเนินการ';
 
-      const { data, error } = await supabase
-        .from('driver')
-        .update({ registerstatus: thaiStatus })
-        .eq('username', username)
-        .select('username, registerstatus, firstname, lastname')
-        .maybeSingle();
-
-      if (error) throw error;
+      const data = await AdminModel.updateDriverStatus(username, thaiStatus);
       if (!data) return res.status(404).json({ error: 'ไม่พบผู้ใช้คนขับนี้' });
 
       return res.status(200).json({
@@ -273,7 +173,7 @@ class AdminController {
   static async updatePubStatus(req, res) {
     try {
       const { username } = req.params;
-      const { status } = req.body; // 'approved', 'rejected', 'อนุมัติแล้ว', 'ปฏิเสธ'
+      const { status } = req.body;
 
       if (!status || !['approved', 'rejected', 'pending', 'อนุมัติแล้ว', 'ปฏิเสธ', 'รอดำเนินการ'].includes(status)) {
         return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
@@ -284,14 +184,7 @@ class AdminController {
       if (status === 'rejected') thaiStatus = 'ปฏิเสธ';
       if (status === 'pending') thaiStatus = 'รอดำเนินการ';
 
-      const { data, error } = await supabase
-        .from('pub')
-        .update({ regisstatus: thaiStatus })
-        .eq('username', username)
-        .select('username, regisstatus, pubname')
-        .maybeSingle();
-
-      if (error) throw error;
+      const data = await AdminModel.updatePubStatus(username, thaiStatus);
       if (!data) return res.status(404).json({ error: 'ไม่พบผู้ประกอบการร้านนี้' });
 
       return res.status(200).json({
@@ -308,15 +201,7 @@ class AdminController {
   // GET /api/admin/driver-reports
   static async getDriverReports(req, res) {
     try {
-      // ดึงรายงานเกี่ยวกับคนขับ (รวมทุกสถานะ)
-      const { data, error } = await supabase
-        .from('driverreport')
-        .select('*')
-        .order('reportdate', { ascending: true });
-
-      if (error) throw error;
-
-      const { getFullStorageUrl } = require('../../utils/supabaseStorage');
+      const data = await AdminModel.getAllDriverReports();
       let reportsData = (data || []).map(report => {
         let imageArray = [];
         if (report.reportimagepath) {
@@ -330,10 +215,10 @@ class AdminController {
         };
       });
 
-      // เรียงลำดับ: สถานะกำลังดำเนินการขึ้นก่อน ตามด้วยวันที่แจ้งรายงานก่อน
+      // เรียงลำดับ: สถานะรอพิจารณาขึ้นก่อน ตามด้วยวันที่แจ้งรายงานก่อน
       reportsData.sort((a, b) => {
-        const aPending = a.reportstatus === 'กำลังดำเนินการ' || a.reportstatus === 'รอดำเนินการ' || a.reportstatus === 'pending';
-        const bPending = b.reportstatus === 'กำลังดำเนินการ' || b.reportstatus === 'รอดำเนินการ' || b.reportstatus === 'pending';
+        const aPending = a.reportstatus === 'รอพิจารณา' || a.reportstatus === 'กำลังดำเนินการ' || a.reportstatus === 'รอดำเนินการ' || a.reportstatus === 'pending';
+        const bPending = b.reportstatus === 'รอพิจารณา' || b.reportstatus === 'กำลังดำเนินการ' || b.reportstatus === 'รอดำเนินการ' || b.reportstatus === 'pending';
         if (aPending && !bPending) return -1;
         if (!aPending && bPending) return 1;
         const dateA = a.reportdate ? new Date(a.reportdate).getTime() : 0;
@@ -354,15 +239,7 @@ class AdminController {
   // GET /api/admin/user-reports
   static async getUserReports(req, res) {
     try {
-      // ดึงรายงานเกี่ยวกับลูกค้า / ผู้ใช้ (รวมทุกสถานะ)
-      const { data, error } = await supabase
-        .from('userreport')
-        .select('*')
-        .order('reportdate', { ascending: true });
-
-      if (error) throw error;
-
-      const { getFullStorageUrl } = require('../../utils/supabaseStorage');
+      const data = await AdminModel.getAllUserReports();
       let reportsData = (data || []).map(report => {
         let imageArray = [];
         if (report.reportimagepath) {
@@ -376,10 +253,10 @@ class AdminController {
         };
       });
 
-      // เรียงลำดับ: สถานะกำลังดำเนินการขึ้นก่อน ตามด้วยวันที่แจ้งรายงานก่อน
+      // เรียงลำดับ: สถานะรอพิจารณาขึ้นก่อน ตามด้วยวันที่แจ้งรายงานก่อน
       reportsData.sort((a, b) => {
-        const aPending = a.reportstatus === 'กำลังดำเนินการ' || a.reportstatus === 'รอดำเนินการ' || a.reportstatus === 'pending';
-        const bPending = b.reportstatus === 'กำลังดำเนินการ' || b.reportstatus === 'รอดำเนินการ' || b.reportstatus === 'pending';
+        const aPending = a.reportstatus === 'รอพิจารณา' || a.reportstatus === 'กำลังดำเนินการ' || a.reportstatus === 'รอดำเนินการ' || a.reportstatus === 'pending';
+        const bPending = b.reportstatus === 'รอพิจารณา' || b.reportstatus === 'กำลังดำเนินการ' || b.reportstatus === 'รอดำเนินการ' || b.reportstatus === 'pending';
         if (aPending && !bPending) return -1;
         if (!aPending && bPending) return 1;
         const dateA = a.reportdate ? new Date(a.reportdate).getTime() : 0;
@@ -407,32 +284,7 @@ class AdminController {
         return res.status(400).json({ error: 'กรุณาระบุสถานะ' });
       }
 
-      if (status === 'ปฏิเสธ' || status === 'ไม่อนุมัติ' || status === 'rejected') {
-        // ลบเอกสารรายงานคนขับออกจากระบบ
-        const { data, error } = await supabase
-          .from('driverreport')
-          .delete()
-          .eq('driverreportid', id)
-          .select()
-          .maybeSingle();
-
-        if (error) throw error;
-
-        return res.status(200).json({
-          success: true,
-          message: 'ปฏิเสธและลบเอกสารรายงานคนขับออกจากระบบเรียบร้อยแล้ว',
-          data
-        });
-      }
-
-      const { data, error } = await supabase
-        .from('driverreport')
-        .update({ reportstatus: status })
-        .eq('driverreportid', id)
-        .select()
-        .maybeSingle();
-
-      if (error) throw error;
+      const data = await AdminModel.updateDriverReportStatus(id, status);
       if (!data) return res.status(404).json({ error: 'ไม่พบเอกสารรายงานนี้' });
 
       return res.status(200).json({
@@ -456,32 +308,7 @@ class AdminController {
         return res.status(400).json({ error: 'กรุณาระบุสถานะ' });
       }
 
-      if (status === 'ปฏิเสธ' || status === 'ไม่อนุมัติ' || status === 'rejected') {
-        // ลบเอกสารรายงานผู้ใช้ออกจากระบบ
-        const { data, error } = await supabase
-          .from('userreport')
-          .delete()
-          .eq('userreportid', id)
-          .select()
-          .maybeSingle();
-
-        if (error) throw error;
-
-        return res.status(200).json({
-          success: true,
-          message: 'ปฏิเสธและลบเอกสารรายงานผู้ใช้ออกจากระบบเรียบร้อยแล้ว',
-          data
-        });
-      }
-
-      const { data, error } = await supabase
-        .from('userreport')
-        .update({ reportstatus: status })
-        .eq('userreportid', id)
-        .select()
-        .maybeSingle();
-
-      if (error) throw error;
+      const data = await AdminModel.updateUserReportStatus(id, status);
       if (!data) return res.status(404).json({ error: 'ไม่พบเอกสารรายงานนี้' });
 
       return res.status(200).json({

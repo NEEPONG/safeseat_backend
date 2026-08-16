@@ -26,7 +26,7 @@ class UserReportController {
         reporttype,
         reportdetail: reportdetail || '',
         request_id: parseInt(request_id),
-        reportstatus: 'กำลังดำเนินการ',
+        reportstatus: 'รอดำเนินการ',
       };
 
       if (reportimagepath) {
