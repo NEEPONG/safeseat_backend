@@ -223,14 +223,14 @@ class RequestService {
     }
 
     /**
-     * Cancel (delete) a user request.
+     * Cancel a user request by updating its status to 'ยกเลิก'.
      * @param {string|number} id Request ID
      * @returns {Promise<object>} Cancelled data
      */
     static async cancelRequest(id) {
         const { data, error } = await supabase
             .from('requestbyuser')
-            .delete()
+            .update({ requeststatus: 'ยกเลิก' })
             .eq('requestid', parseInt(id, 10))
             .select();
 

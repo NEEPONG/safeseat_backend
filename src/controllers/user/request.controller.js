@@ -55,7 +55,7 @@ class RequestController {
       const { id } = req.params;
       const data = await RequestService.cancelRequest(id);
       return res.status(200).json({
-        message: 'Request canceled (deleted) successfully',
+        message: 'Request canceled successfully',
         data: data,
       });
     } catch (error) {
