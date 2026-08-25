@@ -236,12 +236,13 @@ class RequestService {
     }
 
     /**
-     * Get all requests of a user filtered by status type.
+     * Get all requests of a user filtered by status type with batch performance optimization & pagination.
      * @param {string} userId User phone number
      * @param {string} type 'active' | 'completed' | 'cancelled' (optional, default all)
+     * @param {object} pagination { page, limit }
      * @returns {Promise<Array>} List of requests enriched with buddy team + driver profiles
      */
-    static async getRequestsByUser(userId, type) {
+    static async getRequestsByUser(userId, type, pagination = {}) {
         if (!userId) {
             throw new Error('Please provide user_id');
         }
@@ -267,6 +268,16 @@ class RequestService {
             query = query.in('requeststatus', statuses);
         }
 
+        // Apply pagination if limit is specified
+        const pageNum = pagination.page ? parseInt(pagination.page, 10) : null;
+        const limitNum = pagination.limit ? parseInt(pagination.limit, 10) : null;
+        if (limitNum && limitNum > 0) {
+            const page = pageNum && pageNum > 0 ? pageNum : 1;
+            const from = (page - 1) * limitNum;
+            const to = from + limitNum - 1;
+            query = query.range(from, to);
+        }
+
         const { data: requests, error } = await query;
 
         if (error) {
@@ -274,8 +285,12 @@ class RequestService {
             throw new Error(error.message);
         }
 
-        // Batch load all unique user cars for performance
-        const carIds = [...new Set((requests || []).map(r => r.user_car_id).filter(Boolean))];
+        if (!requests || requests.length === 0) {
+            return [];
+        }
+
+        // 1. Batch fetch user cars
+        const carIds = [...new Set(requests.map(r => r.user_car_id).filter(Boolean))];
         let carMap = new Map();
         if (carIds.length > 0) {
             try {
@@ -291,26 +306,100 @@ class RequestService {
             }
         }
 
-        // Enrich each request with buddy team + driver profiles and user car
-        const enriched = [];
-        for (const request of requests || []) {
-            if (request.user_car_id && carMap.has(request.user_car_id)) {
-                request.usercar = carMap.get(request.user_car_id);
-            } else if (request.user_car_id) {
-                request.usercar = await enrichUserCar(request.user_car_id);
-            }
-
-            if (request.buddy_team_id) {
-                const { data: team } = await supabase
+        // 2. Batch fetch buddy teams
+        const teamIds = [...new Set(requests.map(r => r.buddy_team_id).filter(Boolean))];
+        let teamMap = new Map();
+        const allDriverUsernames = new Set();
+        if (teamIds.length > 0) {
+            try {
+                const { data: teams } = await supabase
                     .from('buddyteam')
                     .select('*')
-                    .eq('buddyteamid', request.buddy_team_id)
-                    .maybeSingle();
-                request.buddyteam = team;
+                    .in('buddyteamid', teamIds);
+                if (teams) {
+                    for (const t of teams) {
+                        teamMap.set(t.buddyteamid, t);
+                        if (t.leaderid) allDriverUsernames.add(t.leaderid);
+                        if (t.followerid) allDriverUsernames.add(t.followerid);
+                    }
+                }
+            } catch (tErr) {
+                console.error("Error batch fetching buddy teams:", tErr);
+            }
+        }
 
+        // 3. Batch fetch drivers and reviews in parallel
+        const driverMap = new Map();
+        const driverList = [...allDriverUsernames];
+        if (driverList.length > 0) {
+            try {
+                const [driversRes, reviewsRes] = await Promise.all([
+                    supabase
+                        .from('driver')
+                        .select('username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carbrand, carmodel, carcolor, carplate, carimagepath)')
+                        .in('username', driverList),
+                    supabase
+                        .from('review')
+                        .select('driverusername, reviewrate')
+                        .in('driverusername', driverList)
+                ]);
+
+                // Aggregate reviews in memory
+                const ratingMap = new Map();
+                if (reviewsRes.data) {
+                    for (const r of reviewsRes.data) {
+                        const u = (r.driverusername || '').toLowerCase();
+                        if (!ratingMap.has(u)) ratingMap.set(u, []);
+                        const rate = typeof r.reviewrate === 'number' ? r.reviewrate : parseFloat(r.reviewrate);
+                        if (!isNaN(rate)) ratingMap.get(u).push(rate);
+                    }
+                }
+
+                if (driversRes.data) {
+                    for (const d of driversRes.data) {
+                        const uLower = (d.username || '').toLowerCase();
+                        const rates = ratingMap.get(uLower) || [];
+                        const rating = rates.length > 0 ? parseFloat((rates.reduce((a, b) => a + b, 0) / rates.length).toFixed(1)) : 5.0;
+
+                        const carInfo = d.drivercar ? {
+                            brand: d.drivercar.carbrand || null,
+                            model: d.drivercar.carmodel || null,
+                            color: d.drivercar.carcolor || null,
+                            plate: d.drivercar.carplate || null,
+                            image: d.drivercar.carimagepath ? getFullStorageUrl(d.drivercar.carimagepath) : null,
+                        } : null;
+
+                        driverMap.set(d.username, {
+                            username: d.username,
+                            firstname: d.firstname,
+                            lastname: d.lastname,
+                            phone_no: d.phoneno,
+                            license_plate: d.drivercar?.carplate || null,
+                            driver_car: carInfo,
+                            profile_image: extractDriverProfileImage(d.regisimagepath),
+                            rating: rating,
+                            total_reviews: rates.length,
+                        });
+                    }
+                }
+            } catch (dErr) {
+                console.error("Error batch fetching driver profiles:", dErr);
+            }
+        }
+
+        // 4. Assemble each request in memory without extra network overhead
+        const enriched = [];
+        for (const request of requests) {
+            if (request.user_car_id && carMap.has(request.user_car_id)) {
+                request.usercar = carMap.get(request.user_car_id);
+            }
+
+            if (request.buddy_team_id && teamMap.has(request.buddy_team_id)) {
+                const team = teamMap.get(request.buddy_team_id);
+                request.buddyteam = team;
                 if (team) {
-                    request.leader = await enrichDriverProfile(team.leaderid, true);
-                    request.follower = await enrichDriverProfile(team.followerid, false);
+                    request.leader = driverMap.get(team.leaderid) || null;
+                    request.follower = driverMap.get(team.followerid) || null;
                 }
             }
             enriched.push(request);

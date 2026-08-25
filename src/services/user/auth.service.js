@@ -83,6 +83,30 @@ class AuthService {
             console.error('Insert error:', error);
             throw new Error('เกิดข้อผิดพลาดในการสร้างบัญชี');
         }
+
+        // หากมีการแนบข้อมูลรถยนต์เริ่มต้น ให้บันทึกลงตาราง usercar
+        const carData = userData.car || (userData.carbrand ? userData : null);
+        if (carData && carData.carbrand && carData.carplate && carData.car_type) {
+            try {
+                const { error: carError } = await supabase
+                    .from('usercar')
+                    .insert([
+                        {
+                            carbrand: carData.carbrand.trim(),
+                            carcolor: (carData.carcolor || '').trim(),
+                            carmodel: (carData.carmodel || '').trim(),
+                            carplate: carData.carplate.trim(),
+                            car_type: parseInt(carData.car_type, 10),
+                            user_id: phone
+                        }
+                    ]);
+                if (carError) {
+                    console.error('Insert car error during registration:', carError);
+                }
+            } catch (cErr) {
+                console.error('Exception inserting initial car:', cErr);
+            }
+        }
     }
 }
 

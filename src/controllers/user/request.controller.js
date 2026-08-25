@@ -18,12 +18,12 @@ class RequestController {
     }
   }
 
-  // GET /api/user/request/user/:userId?type=active|completed|cancelled
+  // GET /api/user/request/user/:userId?type=active|completed|cancelled&page=1&limit=5
   static async getRequestsByUser(req, res) {
     try {
       const { userId } = req.params;
-      const { type } = req.query;
-      const requests = await RequestService.getRequestsByUser(userId, type);
+      const { type, page, limit } = req.query;
+      const requests = await RequestService.getRequestsByUser(userId, type, { page, limit });
       return res.status(200).json({ requests });
     } catch (error) {
       console.error("Error in getRequestsByUser:", error);
