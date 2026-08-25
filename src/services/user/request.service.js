@@ -94,6 +94,36 @@ const enrichDriverProfile = async (username, isLeader = false) => {
     }
 };
 
+/**
+ * Helper to query and enrich user car details for a request.
+ * @param {number|string} userCarId
+ * @returns {Promise<object|null>}
+ */
+const enrichUserCar = async (userCarId) => {
+    if (!userCarId) return null;
+    try {
+        const { data: car, error } = await supabase
+            .from('usercar')
+            .select(`
+                *,
+                cartype (
+                    cartypename
+                )
+            `)
+            .eq('usercarid', parseInt(userCarId, 10))
+            .maybeSingle();
+
+        if (error) {
+            console.error(`Error fetching user car ${userCarId}:`, error);
+            return null;
+        }
+        return car || null;
+    } catch (err) {
+        console.error(`Error in enrichUserCar for car ${userCarId}:`, err);
+        return null;
+    }
+};
+
 class RequestService {
     /**
      * Create a driver request.
@@ -182,6 +212,11 @@ class RequestService {
             throw new Error('Request not found');
         }
 
+        // Load user's car details
+        if (request.user_car_id) {
+            request.usercar = await enrichUserCar(request.user_car_id);
+        }
+
         // If a driver buddy team is assigned, load its details
         if (request.buddy_team_id) {
             const { data: team } = await supabase
@@ -239,9 +274,32 @@ class RequestService {
             throw new Error(error.message);
         }
 
-        // Enrich each request with buddy team + driver profiles (same shape as getRequestStatus)
+        // Batch load all unique user cars for performance
+        const carIds = [...new Set((requests || []).map(r => r.user_car_id).filter(Boolean))];
+        let carMap = new Map();
+        if (carIds.length > 0) {
+            try {
+                const { data: cars } = await supabase
+                    .from('usercar')
+                    .select('*, cartype(cartypename)')
+                    .in('usercarid', carIds);
+                if (cars) {
+                    carMap = new Map(cars.map(c => [c.usercarid, c]));
+                }
+            } catch (cErr) {
+                console.error("Error batch fetching user cars:", cErr);
+            }
+        }
+
+        // Enrich each request with buddy team + driver profiles and user car
         const enriched = [];
         for (const request of requests || []) {
+            if (request.user_car_id && carMap.has(request.user_car_id)) {
+                request.usercar = carMap.get(request.user_car_id);
+            } else if (request.user_car_id) {
+                request.usercar = await enrichUserCar(request.user_car_id);
+            }
+
             if (request.buddy_team_id) {
                 const { data: team } = await supabase
                     .from('buddyteam')
