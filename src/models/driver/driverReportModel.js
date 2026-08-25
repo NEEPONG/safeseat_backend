@@ -168,6 +168,37 @@ class DriverReportModel {
     }
   }
 
+  // ดึงรายงานตาม request_id ของทริป
+  static async getReportByRequestId(requestId) {
+    if (!requestId) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('driverreport')
+        .select('*, requestbyuser(*)')
+        .eq('request_id', requestId)
+        .maybeSingle();
+
+      if (error) {
+        console.warn("Join with requestbyuser failed in getReportByRequestId:", error.message);
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('driverreport')
+          .select('*')
+          .eq('request_id', requestId)
+          .maybeSingle();
+        if (fallbackError) throw fallbackError;
+        return fallbackData;
+      }
+
+      if (!data) return null;
+      const enriched = await this.enrichReportsWithDrivers([data]);
+      return enriched[0] || data;
+    } catch (e) {
+      console.error("Error in getReportByRequestId:", e);
+      return null;
+    }
+  }
+
   // สร้างรายงานใหม่
   static async createReport(reportData) {
     const { data, error } = await supabase

@@ -277,9 +277,9 @@ class BuddyRequestModel {
     const driverShare = parseFloat((requestFee * 0.40).toFixed(2));
 
     if (driverShare > 0) {
-      // 4.1 หากผู้ใช้ชำระด้วย SafeSeat Wallet (2) ให้หักเงินจากกระเป๋าผู้ใช้
+      // 4.1 หากเป็นรายการจากสถานบันเทิง (requestbypub) และชำระด้วย SafeSeat Wallet (2) ให้หักเงินจากกระเป๋าผู้ใช้เมื่อจบงาน
       const paymentMethodInt = parseInt(requestData.paymentmethod, 10);
-      if (paymentMethodInt === 2 && requestData.user_id) {
+      if (paymentMethodInt === 2 && requestData.user_id && tableUsed === 'requestbypub') {
         try {
           const { data: userInfo, error: userGetErr } = await supabase
             .from('User')

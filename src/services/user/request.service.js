@@ -162,6 +162,38 @@ class RequestService {
             mappedPaymentMethod = paymentmethod;
         }
 
+        const fee = parseFloat(requestfee || 0);
+
+        // 1. หากผู้ใช้เลือกชำระด้วย SafeSeat Wallet (2) ให้ตรวจสอบและหักเงินทันที
+        if (mappedPaymentMethod === 2) {
+            const { data: user, error: userErr } = await supabase
+                .from('User')
+                .select('walletbalance')
+                .eq('phoneno', user_id)
+                .maybeSingle();
+
+            if (userErr || !user) {
+                throw new Error('ไม่พบข้อมูลผู้ใช้งาน');
+            }
+
+            const currentBalance = parseFloat(user.walletbalance || 0);
+            if (currentBalance < fee) {
+                throw new Error(`ยอดเงินใน SafeSeat Wallet ไม่เพียงพอ (คงเหลือ: ฿${currentBalance.toFixed(2)}, ค่าบริการ: ฿${fee.toFixed(2)})`);
+            }
+
+            const newBalance = parseFloat((currentBalance - fee).toFixed(2));
+            const { error: deductErr } = await supabase
+                .from('User')
+                .update({ walletbalance: newBalance })
+                .eq('phoneno', user_id);
+
+            if (deductErr) {
+                console.error("Error deducting user wallet balance:", deductErr);
+                throw new Error('เกิดข้อผิดพลาดในการหักเงินจาก SafeSeat Wallet');
+            }
+            console.log(`[Wallet Payment] Deducted ฿${fee} from user ${user_id}. New balance: ฿${newBalance}`);
+        }
+
         const requestPayload = {
             dropofflatitude: parseFloat(dropofflatitude),
             dropofflongitude: parseFloat(dropofflongitude),
@@ -171,7 +203,7 @@ class RequestService {
             pickuplatitude: parseFloat(pickuplatitude),
             pickuplongitude: parseFloat(pickuplongitude),
             reqdistance: parseFloat(reqdistance),
-            requestfee: parseFloat(requestfee),
+            requestfee: fee,
             requeststatus: 'กำลังค้นหาคนขับ',
             user_id: user_id,
             user_car_id: parseInt(user_car_id, 10),
@@ -185,6 +217,16 @@ class RequestService {
 
         if (error) {
             console.error("Error creating request:", error);
+            // คืนเงินกลับหากเกิดข้อผิดพลาดในการบันทึกคำขอ (Rollback)
+            if (mappedPaymentMethod === 2) {
+                try {
+                    const { data: user } = await supabase.from('User').select('walletbalance').eq('phoneno', user_id).maybeSingle();
+                    if (user) {
+                        const rollBal = parseFloat((parseFloat(user.walletbalance || 0) + fee).toFixed(2));
+                        await supabase.from('User').update({ walletbalance: rollBal }).eq('phoneno', user_id);
+                    }
+                } catch (_) {}
+            }
             throw new Error(error.message);
         }
 
@@ -414,15 +456,50 @@ class RequestService {
      * @returns {Promise<object>} Cancelled data
      */
     static async cancelRequest(id) {
+        const cleanId = parseInt(id, 10);
+
+        // 1. Fetch request details to check payment method, status and fee before cancel
+        const { data: reqData } = await supabase
+            .from('requestbyuser')
+            .select('*')
+            .eq('requestid', cleanId)
+            .maybeSingle();
+
         const { data, error } = await supabase
             .from('requestbyuser')
             .update({ requeststatus: 'ยกเลิก' })
-            .eq('requestid', parseInt(id, 10))
+            .eq('requestid', cleanId)
             .select();
 
         if (error) {
             console.error("Error canceling request:", error);
             throw new Error(error.message);
+        }
+
+        // 2. If paid by SafeSeat Wallet (2) and wasn't already completed/cancelled, refund the wallet
+        if (reqData && parseInt(reqData.paymentmethod, 10) === 2 && reqData.user_id && reqData.requeststatus !== 'ยกเลิก' && reqData.requeststatus !== 'เสร็จสิ้น') {
+            try {
+                const refundAmount = parseFloat(reqData.requestfee || 0);
+                if (refundAmount > 0) {
+                    const { data: user } = await supabase
+                        .from('User')
+                        .select('walletbalance')
+                        .eq('phoneno', reqData.user_id)
+                        .maybeSingle();
+
+                    if (user) {
+                        const currentBalance = parseFloat(user.walletbalance || 0);
+                        const refundedBalance = parseFloat((currentBalance + refundAmount).toFixed(2));
+                        await supabase
+                            .from('User')
+                            .update({ walletbalance: refundedBalance })
+                            .eq('phoneno', reqData.user_id);
+                        console.log(`[Wallet Refund] Refunded ฿${refundAmount} to user ${reqData.user_id} due to cancel. New balance: ฿${refundedBalance}`);
+                    }
+                }
+            } catch (refErr) {
+                console.error("Error refunding user wallet on cancel:", refErr);
+            }
         }
 
         return data;
