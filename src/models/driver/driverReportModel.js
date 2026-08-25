@@ -1,6 +1,55 @@
 const supabase = require('./dbClient');
 
 class DriverReportModel {
+  // Helper to enrich reports with leader and follower driver profiles from buddyteam
+  static async enrichReportsWithDrivers(reports) {
+    if (!reports || !reports.length) return reports;
+
+    const teamIds = [...new Set(reports.map(r => r.requestbyuser?.buddy_team_id).filter(Boolean))];
+    if (!teamIds.length) return reports;
+
+    try {
+      const { data: teams } = await supabase
+        .from('buddyteam')
+        .select('*, leader:leaderid(username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carplate)), follower:followerid(username, firstname, lastname, phoneno, regisimagepath)')
+        .in('buddyteamid', teamIds);
+
+      if (teams && teams.length) {
+        const teamMap = new Map(teams.map(t => [t.buddyteamid, t]));
+        for (const report of reports) {
+          if (report.requestbyuser && report.requestbyuser.buddy_team_id) {
+            const team = teamMap.get(report.requestbyuser.buddy_team_id);
+            if (team) {
+              report.requestbyuser.buddyteam = team;
+              if (team.leader) {
+                report.requestbyuser.leader = {
+                  username: team.leader.username,
+                  firstname: team.leader.firstname,
+                  lastname: team.leader.lastname,
+                  phone_no: team.leader.phoneno,
+                  license_plate: team.leader.drivercar?.carplate || null,
+                  regisimagepath: team.leader.regisimagepath || null,
+                };
+              }
+              if (team.follower) {
+                report.requestbyuser.follower = {
+                  username: team.follower.username,
+                  firstname: team.follower.firstname,
+                  lastname: team.follower.lastname,
+                  phone_no: team.follower.phoneno,
+                  regisimagepath: team.follower.regisimagepath || null,
+                };
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Error enriching reports with driver details:", e.message);
+    }
+    return reports;
+  }
+
   // ดึงข้อมูลรายงานทั้งหมด
   static async getAllReports() {
     try {
@@ -27,7 +76,7 @@ class DriverReportModel {
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
-      return data;
+      return await this.enrichReportsWithDrivers(data || []);
     } catch (e) {
       console.error("Error in getAllReports:", e);
       const oneMonthAgo = new Date();
@@ -105,7 +154,7 @@ class DriverReportModel {
         .order('reportdate', { ascending: false });
 
       if (error) throw error;
-      return data;
+      return await this.enrichReportsWithDrivers(data || []);
     } catch (e) {
       console.warn("Join filter in getReportsByUser failed, filtering in JS:", e.message);
       const allReports = await this.getAllReports();
@@ -130,3 +179,4 @@ class DriverReportModel {
 }
 
 module.exports = DriverReportModel;
+
