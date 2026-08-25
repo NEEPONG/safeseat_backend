@@ -22,13 +22,14 @@ const getProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
     try {
-        const { phoneno, name, gender, email, mainaddress, profileimagepath } = req.body;
+        const { phoneno, name, gender, email, mainaddress, profileimagepath, walletbalance } = req.body;
         const updatedUser = await ProfileService.updateProfile(phoneno, {
             name,
             gender,
             email,
             mainaddress,
-            profileimagepath
+            profileimagepath,
+            walletbalance
         });
         return res.status(200).json({
             message: 'Update profile successful',
@@ -38,6 +39,26 @@ const updateProfile = async (req, res) => {
         console.error("Update profile error:", error);
         if (error.message === 'Please provide phone number to update') {
             return res.status(400).json({ error: error.message });
+        }
+        return res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+};
+
+const topUpWallet = async (req, res) => {
+    try {
+        const { phoneNo, amount } = req.body;
+        const updatedUser = await ProfileService.topUpWallet(phoneNo, amount);
+        return res.status(200).json({
+            message: 'Top up wallet successful',
+            user: updatedUser
+        });
+    } catch (error) {
+        console.error("Top up wallet error:", error);
+        if (error.message === 'Please provide phone number and amount' || error.message === 'Invalid top up amount') {
+            return res.status(400).json({ error: error.message });
+        }
+        if (error.message === 'ไม่พบข้อมูลผู้ใช้งาน') {
+            return res.status(404).json({ error: error.message });
         }
         return res.status(500).json({ error: error.message || 'Internal server error' });
     }
@@ -99,5 +120,5 @@ const deleteUserCar = async (req, res) => {
     }
 };
 
-module.exports = { getProfile, updateProfile, getUserCars, getCarTypes, addUserCar, deleteUserCar };
+module.exports = { getProfile, updateProfile, topUpWallet, getUserCars, getCarTypes, addUserCar, deleteUserCar };
 

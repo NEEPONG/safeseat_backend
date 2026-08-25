@@ -277,7 +277,31 @@ class BuddyRequestModel {
     const driverShare = parseFloat((requestFee * 0.40).toFixed(2));
 
     if (driverShare > 0) {
-      // ค้นหาสมาชิกในทีม (หัวหน้าทีมและผู้ติดตาม)
+      // 4.1 หากผู้ใช้ชำระด้วย SafeSeat Wallet (2) ให้หักเงินจากกระเป๋าผู้ใช้
+      const paymentMethodInt = parseInt(requestData.paymentmethod, 10);
+      if (paymentMethodInt === 2 && requestData.user_id) {
+        try {
+          const { data: userInfo, error: userGetErr } = await supabase
+            .from('User')
+            .select('walletbalance')
+            .eq('phoneno', requestData.user_id)
+            .maybeSingle();
+
+          if (!userGetErr && userInfo) {
+            const userBal = parseFloat(userInfo.walletbalance || 0);
+            const userNewBal = Math.max(0, parseFloat((userBal - requestFee).toFixed(2)));
+            await supabase
+              .from('User')
+              .update({ walletbalance: userNewBal })
+              .eq('phoneno', requestData.user_id);
+            console.log(`Deducted ${requestFee} from user ${requestData.user_id} wallet. New balance: ${userNewBal}`);
+          }
+        } catch (uErr) {
+          console.error(`Failed to deduct user wallet for user ${requestData.user_id}:`, uErr);
+        }
+      }
+
+      // 4.2 ค้นหาสมาชิกในทีม (หัวหน้าทีมและผู้ติดตาม) เพื่อแบ่งจ่ายค่าบริการ
       const { data: team, error: teamGetError } = await supabase
         .from('buddyteam')
         .select('leaderid, followerid')
