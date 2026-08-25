@@ -1,4 +1,91 @@
 const { supabase } = require('../../config/supabase.js');
+const { getFullStorageUrl } = require('../../utils/supabaseStorage.js');
+
+/**
+ * Extracts and normalizes public profile image URL from driver's regisimagepath.
+ * @param {string|object|Array} regisimagepath
+ * @returns {string|null} Full public image URL
+ */
+const extractDriverProfileImage = (regisimagepath) => {
+    if (!regisimagepath) return null;
+    try {
+        const parsed = typeof regisimagepath === 'string' ? JSON.parse(regisimagepath) : regisimagepath;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            return getFullStorageUrl(parsed[0]);
+        }
+        if (parsed && typeof parsed === 'object') {
+            if (parsed.profile) return getFullStorageUrl(parsed.profile);
+            const firstVal = Object.values(parsed)[0];
+            if (firstVal) return getFullStorageUrl(firstVal);
+        }
+        return getFullStorageUrl(regisimagepath);
+    } catch (e) {
+        return getFullStorageUrl(regisimagepath);
+    }
+};
+
+/**
+ * Fetches actual average rating and review count from review table.
+ * @param {string} username Driver username
+ * @returns {Promise<{rating: number, total_reviews: number}>}
+ */
+const fetchDriverRating = async (username) => {
+    if (!username) return { rating: 5.0, total_reviews: 0 };
+    try {
+        const { data: reviews, error } = await supabase
+            .from('review')
+            .select('reviewrate')
+            .eq('driverusername', username);
+        if (error || !reviews || reviews.length === 0) {
+            return { rating: 5.0, total_reviews: 0 };
+        }
+        const total = reviews.length;
+        const sum = reviews.reduce((acc, r) => acc + (Number(r.reviewrate) || 0), 0);
+        const avg = parseFloat((sum / total).toFixed(1));
+        return { rating: avg, total_reviews: total };
+    } catch (e) {
+        return { rating: 5.0, total_reviews: 0 };
+    }
+};
+
+/**
+ * Helper to query and enrich driver profile details with avatar and rating.
+ * @param {string} username
+ * @param {boolean} isLeader
+ * @returns {Promise<object|null>}
+ */
+const enrichDriverProfile = async (username, isLeader = false) => {
+    if (!username) return null;
+    try {
+        const selectQuery = isLeader
+            ? 'username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carplate)'
+            : 'username, firstname, lastname, phoneno, regisimagepath';
+
+        const { data: driver } = await supabase
+            .from('driver')
+            .select(selectQuery)
+            .eq('username', username)
+            .maybeSingle();
+
+        if (!driver) return null;
+
+        const ratingInfo = await fetchDriverRating(driver.username);
+
+        return {
+            username: driver.username,
+            firstname: driver.firstname,
+            lastname: driver.lastname,
+            phone_no: driver.phoneno,
+            license_plate: driver.drivercar?.carplate || null,
+            profile_image: extractDriverProfileImage(driver.regisimagepath),
+            rating: ratingInfo.rating,
+            total_reviews: ratingInfo.total_reviews,
+        };
+    } catch (err) {
+        console.error(`Error enriching driver profile for ${username}:`, err);
+        return null;
+    }
+};
 
 class RequestService {
     /**
@@ -98,37 +185,8 @@ class RequestService {
             request.buddyteam = team;
 
             if (team) {
-                // Fetch leader and follower driver profiles.
-                // NOTE: driver table stores phone in `phoneno` and the license plate
-                // lives in the `drivercar` table (`carplate`) joined via `driver_car`.
-                // Map them to the `phone_no` / `license_plate` keys the mini app expects.
-                const { data: leader } = await supabase
-                    .from('driver')
-                    .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
-                    .eq('username', team.leaderid)
-                    .maybeSingle();
-                const { data: follower } = await supabase
-                    .from('driver')
-                    .select('username, firstname, lastname, phoneno')
-                    .eq('username', team.followerid)
-                    .maybeSingle();
-                if (leader) {
-                    request.leader = {
-                        username: leader.username,
-                        firstname: leader.firstname,
-                        lastname: leader.lastname,
-                        phone_no: leader.phoneno,
-                        license_plate: leader.drivercar?.carplate || null,
-                    };
-                }
-                if (follower) {
-                    request.follower = {
-                        username: follower.username,
-                        firstname: follower.firstname,
-                        lastname: follower.lastname,
-                        phone_no: follower.phoneno,
-                    };
-                }
+                request.leader = await enrichDriverProfile(team.leaderid, true);
+                request.follower = await enrichDriverProfile(team.followerid, false);
             }
         }
 
@@ -186,34 +244,8 @@ class RequestService {
                 request.buddyteam = team;
 
                 if (team) {
-                    // Same enrichment as getRequestStatus (see note above about phoneno / drivercar.carplate)
-                    const { data: leader } = await supabase
-                        .from('driver')
-                        .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
-                        .eq('username', team.leaderid)
-                        .maybeSingle();
-                    const { data: follower } = await supabase
-                        .from('driver')
-                        .select('username, firstname, lastname, phoneno')
-                        .eq('username', team.followerid)
-                        .maybeSingle();
-                    if (leader) {
-                        request.leader = {
-                            username: leader.username,
-                            firstname: leader.firstname,
-                            lastname: leader.lastname,
-                            phone_no: leader.phoneno,
-                            license_plate: leader.drivercar?.carplate || null,
-                        };
-                    }
-                    if (follower) {
-                        request.follower = {
-                            username: follower.username,
-                            firstname: follower.firstname,
-                            lastname: follower.lastname,
-                            phone_no: follower.phoneno,
-                        };
-                    }
+                    request.leader = await enrichDriverProfile(team.leaderid, true);
+                    request.follower = await enrichDriverProfile(team.followerid, false);
                 }
             }
             enriched.push(request);
