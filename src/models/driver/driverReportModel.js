@@ -11,7 +11,7 @@ class DriverReportModel {
     try {
       const { data: teams } = await supabase
         .from('buddyteam')
-        .select('*, leader:leaderid(username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carplate)), follower:followerid(username, firstname, lastname, phoneno, regisimagepath)')
+        .select('*, leader:leaderid(username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carbrand, carmodel, carplate)), follower:followerid(username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carbrand, carmodel, carplate))')
         .in('buddyteamid', teamIds);
 
       if (teams && teams.length) {
@@ -28,6 +28,7 @@ class DriverReportModel {
                   lastname: team.leader.lastname,
                   phone_no: team.leader.phoneno,
                   license_plate: team.leader.drivercar?.carplate || null,
+                  driver_car: team.leader.drivercar || null,
                   regisimagepath: team.leader.regisimagepath || null,
                 };
               }
@@ -37,6 +38,8 @@ class DriverReportModel {
                   firstname: team.follower.firstname,
                   lastname: team.follower.lastname,
                   phone_no: team.follower.phoneno,
+                  license_plate: team.follower.drivercar?.carplate || null,
+                  driver_car: team.follower.drivercar || null,
                   regisimagepath: team.follower.regisimagepath || null,
                 };
               }

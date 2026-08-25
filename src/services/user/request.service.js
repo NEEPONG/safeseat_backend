@@ -49,7 +49,7 @@ const fetchDriverRating = async (username) => {
 };
 
 /**
- * Helper to query and enrich driver profile details with avatar and rating.
+ * Helper to query and enrich driver profile details with avatar, rating, and driver vehicle.
  * @param {string} username
  * @param {boolean} isLeader
  * @returns {Promise<object|null>}
@@ -57,9 +57,7 @@ const fetchDriverRating = async (username) => {
 const enrichDriverProfile = async (username, isLeader = false) => {
     if (!username) return null;
     try {
-        const selectQuery = isLeader
-            ? 'username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carplate)'
-            : 'username, firstname, lastname, phoneno, regisimagepath';
+        const selectQuery = 'username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carbrand, carmodel, carcolor, carplate, carimagepath)';
 
         const { data: driver } = await supabase
             .from('driver')
@@ -71,12 +69,21 @@ const enrichDriverProfile = async (username, isLeader = false) => {
 
         const ratingInfo = await fetchDriverRating(driver.username);
 
+        const carInfo = driver.drivercar ? {
+            brand: driver.drivercar.carbrand || null,
+            model: driver.drivercar.carmodel || null,
+            color: driver.drivercar.carcolor || null,
+            plate: driver.drivercar.carplate || null,
+            image: driver.drivercar.carimagepath ? getFullStorageUrl(driver.drivercar.carimagepath) : null,
+        } : null;
+
         return {
             username: driver.username,
             firstname: driver.firstname,
             lastname: driver.lastname,
             phone_no: driver.phoneno,
             license_plate: driver.drivercar?.carplate || null,
+            driver_car: carInfo,
             profile_image: extractDriverProfileImage(driver.regisimagepath),
             rating: ratingInfo.rating,
             total_reviews: ratingInfo.total_reviews,
