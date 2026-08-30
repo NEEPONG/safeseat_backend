@@ -139,8 +139,7 @@ class BuddyRequestModel {
     const primaryTable = isPubJob ? 'requestbypub' : 'requestbyuser';
     const secondaryTable = isPubJob ? 'requestbyuser' : 'requestbypub';
 
-    const primaryStatus = isPubJob ? 'รอคนขับ' : 'กำลังค้นหาคนขับ';
-    const secondaryStatus = isPubJob ? 'กำลังค้นหาคนขับ' : 'รอคนขับ';
+    const validStatuses = ['รอคนขับ', 'กำลังค้นหาคนขับ', 'pending', 'waiting'];
 
     let jobData = null;
     let jobError = null;
@@ -153,7 +152,7 @@ class BuddyRequestModel {
         requeststatus: 'กำลังไปรับ' 
       })
       .eq('requestid', cleanRequestId)
-      .eq('requeststatus', primaryStatus) // การันตี Atomic Update
+      .in('requeststatus', validStatuses)
       .select();
 
     if (primaryError) {
@@ -171,13 +170,33 @@ class BuddyRequestModel {
           requeststatus: 'กำลังไปรับ' 
         })
         .eq('requestid', cleanRequestId)
-        .eq('requeststatus', secondaryStatus) // การันตี Atomic Update
+        .in('requeststatus', validStatuses)
         .select();
 
       if (secondaryError) {
         jobError = secondaryError;
       } else if (secondaryData && secondaryData.length > 0) {
         jobData = secondaryData;
+      }
+    }
+
+    // 3. Fallback: หากยังไม่พบ อาจเกิดจาก status อื่นๆ ที่ยังไม่เสร็จสิ้น
+    if (!jobData || jobData.length === 0) {
+      for (const table of [primaryTable, secondaryTable]) {
+        const { data: fallbackData } = await supabase
+          .from(table)
+          .update({ 
+            buddy_team_id: cleanBuddyTeamId, 
+            requeststatus: 'กำลังไปรับ' 
+          })
+          .eq('requestid', cleanRequestId)
+          .is('buddy_team_id', null)
+          .select();
+          
+        if (fallbackData && fallbackData.length > 0) {
+          jobData = fallbackData;
+          break;
+        }
       }
     }
 
@@ -332,6 +351,46 @@ class BuddyRequestModel {
     }
 
     return { message: 'เสร็จสิ้นงานและจ่ายค่าบริการเรียบร้อย', request: updatedReq };
+  }
+
+  // 8. ดึงรายชื่อบัดดี้ที่เคยร่วมงานกันล่าสุด (Recent Buddies)
+  static async getRecentBuddies(userId) {
+    const { data, error } = await supabase
+      .from('buddyteam')
+      .select('*, leader:leaderid(username, firstname, lastname, regisimagepath, phoneno), follower:followerid(username, firstname, lastname, regisimagepath, phoneno)')
+      .or(`leaderid.ilike.${userId},followerid.ilike.${userId}`)
+      .order('buddyteamid', { ascending: false })
+      .limit(30);
+
+    if (error) throw error;
+    if (!data) return [];
+
+    const seenUsernames = new Set();
+    const recentBuddies = [];
+
+    for (const team of data) {
+      let partner = null;
+      if (team.leaderid && team.leaderid.toLowerCase() === userId.toLowerCase()) {
+        partner = team.follower;
+      } else if (team.followerid && team.followerid.toLowerCase() === userId.toLowerCase()) {
+        partner = team.leader;
+      }
+
+      if (partner && partner.username) {
+        const pUser = partner.username.toLowerCase();
+        if (!seenUsernames.has(pUser)) {
+          seenUsernames.add(pUser);
+          formatDriverDocs(partner);
+          recentBuddies.push({
+            ...partner,
+            lastTeamId: team.buddyteamid,
+            teamstatus: team.teamstatus,
+          });
+        }
+      }
+    }
+
+    return recentBuddies;
   }
 }
 

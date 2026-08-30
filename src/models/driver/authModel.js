@@ -16,6 +16,18 @@ class AuthModel {
     const isMatch = await bcrypt.compare(password, data.password);
     if (!isMatch) return null;
 
+    // ตรวจสอบสถานะการอนุมัติการสมัคร (registerstatus)
+    const status = data.registerstatus;
+    if (status === 'รอดำเนินการ' || status === 'pending') {
+      return { status: 'PENDING', registerstatus: status };
+    }
+    if (status === 'ปฏิเสธ' || status === 'rejected') {
+      return { status: 'REJECTED', registerstatus: status };
+    }
+    if (status !== 'อนุมัติแล้ว' && status !== 'approved') {
+      return { status: 'NOT_APPROVED', registerstatus: status };
+    }
+
     // หากเข้าสู่ระบบสำเร็จและมีการส่งพิกัดละติจูด/ลองจิจูดมา ให้ทำการอัปเดตตำแหน่งคนขับ
     if (data && latitude !== undefined && longitude !== undefined) {
       const { data: updatedData, error: updateError } = await supabase
@@ -30,7 +42,7 @@ class AuthModel {
       }
     }
 
-    return formatDriverDocs(data);
+    return { status: 'APPROVED', user: formatDriverDocs(data) };
   }
 
   // ตรวจสอบว่ามี username นี้อยู่ในระบบแล้วหรือยัง (ยกเว้นผู้ที่ถูกปฏิเสธ)

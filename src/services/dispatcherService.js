@@ -46,10 +46,10 @@ class DispatcherService {
 
   static async dispatchJob(job, type = 'user') {
     try {
-      // 1. ดึงทีมคนขับที่กำลังว่าง (Ready) ทั้งหมด พร้อมข้อมูลเพศเพื่อรองรับ Lady Mode
+      // 1. ดึงทีมคนขับที่กำลังว่าง (Ready) ทั้งหมด พร้อมข้อมูลเพศ และทักษะการขับรถของหัวหน้าทีม (Leader)
       const { data: teams, error } = await supabase
         .from('buddyteam')
-        .select('*, leader:leaderid(gender), follower:followerid(gender)')
+        .select('*, leader:leaderid(gender, driverskills), follower:followerid(gender)')
         .eq('teamstatus', 'Ready');
 
       if (error) throw error;
@@ -63,14 +63,53 @@ class DispatcherService {
       let eligibleTeams = teams;
       if (job.isladymode) {
         const isFemale = (g) => g === 2 || g === '2' || String(g).toLowerCase() === 'female' || String(g) === 'หญิง';
-        eligibleTeams = teams.filter(team => {
+        eligibleTeams = eligibleTeams.filter(team => {
           return team.leader && isFemale(team.leader.gender) && team.follower && isFemale(team.follower.gender);
         });
         console.log(`[Dispatcher] กรองทีมสำหรับ Lady Mode (เหลือ ${eligibleTeams.length} ทีมจาก ${teams.length} ทีม)`);
       }
 
+      // กรองตามประเภทรถ / ระบบเกียร์ของหัวหน้าทีม (Leader)
+      // requiredcartype: 1 = EV/Electric, 2 = Manual, 3 = Auto
+      if (job.requiredcartype) {
+        const reqType = parseInt(job.requiredcartype, 10);
+        eligibleTeams = eligibleTeams.filter(team => {
+          if (!team.leader) return false;
+          
+          let skills = team.leader.driverskills;
+          if (!skills) return true; // หากไม่ได้ระบุ ให้ถือว่าขับได้ทั่วไป
+          
+          let skillList = [];
+          if (Array.isArray(skills)) {
+            skillList = skills;
+          } else if (typeof skills === 'string') {
+            try {
+              skillList = JSON.parse(skills);
+              if (!Array.isArray(skillList)) skillList = [skills];
+            } catch (_) {
+              skillList = [skills];
+            }
+          }
+
+          const skillStr = skillList.join(' ').toLowerCase();
+
+          if (reqType === 1) {
+            // รถไฟฟ้า (EV)
+            return skillStr.includes('ev') || skillStr.includes('electric') || skillStr.includes('ไฟฟ้า');
+          } else if (reqType === 2) {
+            // เกียร์ธรรมดา (Manual)
+            return skillStr.includes('manual') || skillStr.includes('ธรรมดา') || skillStr.includes('กระปุก');
+          } else if (reqType === 3) {
+            // เกียร์ออโต้ (Auto)
+            return skillStr.includes('auto') || skillStr.includes('ออโต้') || skillStr.length === 0;
+          }
+          return true;
+        });
+        console.log(`[Dispatcher] กรองทีมตามประเภทรถ/เกียร์ของหัวหน้าทีม (Required: ${job.requiredcartype}) -> เหลือ ${eligibleTeams.length} ทีม`);
+      }
+
       if (eligibleTeams.length === 0) {
-        console.log(`[Dispatcher] ❌ ไม่มีทีมคนขับที่สอดคล้องกับเงื่อนไข Lady Mode หรือไม่มีทีมว่าง (Request ID: ${job.requestid})`);
+        console.log(`[Dispatcher] ❌ ไม่มีทีมคนขับที่สอดคล้องกับเงื่อนไข (Lady Mode / ประเภทรถ ${job.requiredcartype}) หรือไม่มีทีมว่าง (Request ID: ${job.requestid})`);
         return;
       }
 

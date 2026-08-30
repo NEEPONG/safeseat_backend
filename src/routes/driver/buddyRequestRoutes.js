@@ -12,6 +12,7 @@ router.get('/pending/:userId', BuddyRequestController.getPending);
 router.put('/accept/:id', BuddyRequestController.accept);
 router.put('/reject/:id', BuddyRequestController.reject);
 router.get('/active/:userId', BuddyRequestController.getActive);
+router.get('/recent/:userId', BuddyRequestController.getRecent);
 
 // Job routes (Backward compatible endpoints)
 router.post('/accept-job', JobController.acceptJob);
