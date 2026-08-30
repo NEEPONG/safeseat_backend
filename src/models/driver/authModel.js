@@ -104,15 +104,44 @@ class AuthModel {
 
   // ตรวจสอบว่ามีเลขบัตรประชาชนนี้อยู่ในระบบแล้วหรือยัง (excluding rejected)
   static async checkDuplicateIdCard(idcard) {
-    const { data, error } = await supabase
+    if (!idcard) return false;
+    const cleanId = String(idcard).trim();
+    const { data: driverData } = await supabase
       .from('driver')
       .select('idcard, registerstatus')
-      .eq('idcard', idcard)
-      .maybeSingle();
+      .eq('idcard', cleanId);
 
-    if (error || !data) return false;
-    if (data.registerstatus === 'ปฏิเสธ' || data.registerstatus === 'rejected') return false;
-    return true;
+    if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true;
+
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('taxnumber, regisstatus')
+      .eq('taxnumber', cleanId);
+
+    if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true;
+
+    return false;
+  }
+
+  // ตรวจสอบว่ามีเลขที่บัญชีธนาคารนี้อยู่ในระบบแล้วหรือยัง (excluding rejected)
+  static async checkDuplicateBankAccount(bankAccountNo) {
+    if (!bankAccountNo) return false;
+    const cleanAcc = String(bankAccountNo).trim();
+    const { data: driverData } = await supabase
+      .from('driver')
+      .select('bankaccountno, registerstatus')
+      .eq('bankaccountno', cleanAcc);
+
+    if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true;
+
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('bankaccountno, regisstatus')
+      .eq('bankaccountno', cleanAcc);
+
+    if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true;
+
+    return false;
   }
 
   // ตรวจสอบว่ามีทะเบียนยานพาหนะนี้อยู่ในระบบแล้วหรือยัง (Normalized เปรียบเทียบ)

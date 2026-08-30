@@ -116,15 +116,78 @@ const checkDuplicatePhoneCrossTable = async (phone) => {
 // ── Query: หา pub จาก taxnumber ─────────────────────────────
 const findByTaxNumber = async (taxNumber) => {
   if (!taxNumber) return null
-  const { data, error } = await supabase
+  const cleanTax = String(taxNumber).trim()
+  const { data: pubData, error } = await supabase
     .from('pub')
     .select('taxnumber, regisstatus')
-    .eq('taxnumber', taxNumber)
-    .maybeSingle()
+    .eq('taxnumber', cleanTax)
 
-  if (error || !data) return null
-  if (data.regisstatus === 'ปฏิเสธ' || data.regisstatus === 'rejected') return null
-  return data
+  if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) {
+    return pubData.find(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')
+  }
+
+  const { data: driverData } = await supabase
+    .from('driver')
+    .select('idcard, registerstatus')
+    .eq('idcard', cleanTax)
+
+  if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) {
+    return driverData.find(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')
+  }
+
+  return null
+}
+
+// ── Query: ตรวจสอบเลขบัญชีซ้ำข้ามตาราง (pub & driver) ──────────────────────
+const checkDuplicateBankAccountCrossTable = async (bankAccountNo) => {
+  if (!bankAccountNo) return false
+  const cleanAcc = String(bankAccountNo).trim()
+  const { data: pubData } = await supabase.from('pub').select('bankaccountno, regisstatus').eq('bankaccountno', cleanAcc)
+  if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true
+  const { data: driverData } = await supabase.from('driver').select('bankaccountno, registerstatus').eq('bankaccountno', cleanAcc)
+  if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true
+  return false
+}
+
+// ── Query: หา pub จาก pubname ─────────────────────────────────
+const findByPubName = async (pubName) => {
+  if (!pubName) return null
+  const cleanName = String(pubName).trim()
+  const { data, error } = await supabase
+    .from('pub')
+    .select('pubname, regisstatus')
+    .ilike('pubname', cleanName)
+
+  if (error || !data || data.length === 0) return null
+  return data.find(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected') || null
+}
+
+// ── Query: ตรวจสอบ username ซ้ำข้ามตาราง (pub, driver, admin) ────────────
+const checkDuplicateUsernameCrossTable = async (username) => {
+  if (!username) return false
+  const cleanUser = String(username).trim()
+  const { data: pubData } = await supabase
+    .from('pub')
+    .select('username, regisstatus')
+    .eq('username', cleanUser)
+
+  if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true
+
+  const { data: driverData } = await supabase
+    .from('driver')
+    .select('username, registerstatus')
+    .eq('username', cleanUser)
+
+  if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true
+
+  const { data: adminData } = await supabase
+    .from('admin')
+    .select('username')
+    .eq('username', cleanUser)
+
+  if (adminData && adminData.length > 0) return true
+
+  return false
 }
 
 module.exports = {
@@ -133,6 +196,9 @@ module.exports = {
   findByTaxNumber,
   checkDuplicateEmailCrossTable,
   checkDuplicatePhoneCrossTable,
+  checkDuplicateBankAccountCrossTable,
+  checkDuplicateUsernameCrossTable,
+  findByPubName,
   findRegistrationStatus,
   findProfileByUsername,
   create

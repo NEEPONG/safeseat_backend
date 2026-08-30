@@ -133,6 +133,12 @@ const registerPub = async (pubData) => {
     }
   }
 
+  // ── ตรวจสอบ pubName ซ้ำ ──────────────────────────────────────
+  const existingPubName = await PubModel.findByPubName(pubName)
+  if (existingPubName) {
+    throw new Error('ชื่อสถานประกอบการนี้มีในระบบแล้ว กรุณาใช้ชื่ออื่น')
+  }
+
   // ── ตรวจสอบ email ซ้ำ ข้ามตาราง (pub & driver) ────────────────
   const existingEmail = await PubModel.checkDuplicateEmailCrossTable(pubEmail)
   if (existingEmail) {
@@ -148,7 +154,13 @@ const registerPub = async (pubData) => {
   // ── ตรวจสอบ taxnumber ซ้ำ ───────────────────────────────────
   const existingTax = await PubModel.findByTaxNumber(taxNumber)
   if (existingTax) {
-    throw new Error('เลขผู้เสียภาษีนี้มีในระบบแล้ว กรุณาใช้อื่น')
+    throw new Error('เลขผู้เสียภาษีนี้มีในระบบแล้ว กรุณาใช้เลขอื่น')
+  }
+
+  // ── ตรวจสอบ bankAccountNo ซ้ำ ────────────────────────────────
+  const existingBank = await PubModel.checkDuplicateBankAccountCrossTable(bankAccountNo)
+  if (existingBank) {
+    throw new Error('เลขบัญชีธนาคารนี้มีในระบบแล้ว กรุณาใช้บัญชีอื่น')
   }
 
   // ── Insert ข้อมูลลง Supabase ─────────────────────────────────
