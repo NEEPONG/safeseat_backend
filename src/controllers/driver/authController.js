@@ -257,6 +257,15 @@ class AuthController {
         }
       }
 
+      // Map string names or numeric IDs to car_type_id (1: EV, 2: Manual, 3: Auto)
+      let numericSkills = skills.map(s => {
+        const str = String(s).toLowerCase();
+        if (str.includes('ev') || str.includes('electric') || str.includes('ไฟฟ้า') || str === '1') return 1;
+        if (str.includes('manual') || str.includes('ธรรมดา') || str.includes('กระปุก') || str === '2') return 2;
+        if (str.includes('auto') || str.includes('ออโต้') || str === '3') return 3;
+        return parseInt(s, 10);
+      }).filter(id => !isNaN(id));
+
       const finalDriverData = {
         username: finalUsername,
         password: hashedPassword, // Hash password before saving
@@ -273,7 +282,7 @@ class AuthController {
         regisdate: new Date().toISOString(),
         latitude: 0.0, // default coordinates
         longitude: 0.0,
-        driverskills: JSON.stringify(skills)
+        driverskills: numericSkills
       };
 
       const finalCarData = {

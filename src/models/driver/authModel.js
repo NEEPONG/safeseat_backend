@@ -219,6 +219,22 @@ class AuthModel {
       throw new Error(`ไม่สามารถสมัครสมาชิกได้: ${driverError.message}`);
     }
 
+    // 3. บันทึกข้อมูลทักษะการขับรถยนต์ (driverskill table) ถ้ามีระบุ
+    if (driverData.driverskills && Array.isArray(driverData.driverskills) && driverData.driverskills.length > 0) {
+      try {
+        const skillRows = driverData.driverskills.map(carTypeId => ({
+          driver_id: insertedDriver.username,
+          car_type_id: parseInt(carTypeId, 10)
+        })).filter(row => !isNaN(row.car_type_id));
+
+        if (skillRows.length > 0) {
+          await supabase.from('driverskill').insert(skillRows);
+        }
+      } catch (skillErr) {
+        console.error("Failed to insert driverskill records:", skillErr);
+      }
+    }
+
     return {
       driver: insertedDriver,
       car: insertedCar

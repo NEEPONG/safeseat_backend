@@ -49,7 +49,7 @@ class DispatcherService {
       // 1. ดึงทีมคนขับที่กำลังว่าง (Ready) ทั้งหมด พร้อมข้อมูลเพศ และทักษะการขับรถของหัวหน้าทีม (Leader)
       const { data: teams, error } = await supabase
         .from('buddyteam')
-        .select('*, leader:leaderid(gender, driverskills), follower:followerid(gender)')
+        .select('*, leader:leaderid(gender, driverskill(car_type_id, cartype(cartypeid, cartypename))), follower:followerid(gender)')
         .eq('teamstatus', 'Ready');
 
       if (error) throw error;
@@ -76,32 +76,29 @@ class DispatcherService {
         eligibleTeams = eligibleTeams.filter(team => {
           if (!team.leader) return false;
           
-          let skills = team.leader.driverskills;
-          if (!skills) return true; // หากไม่ได้ระบุ ให้ถือว่าขับได้ทั่วไป
-          
           let skillList = [];
-          if (Array.isArray(skills)) {
-            skillList = skills;
-          } else if (typeof skills === 'string') {
-            try {
-              skillList = JSON.parse(skills);
-              if (!Array.isArray(skillList)) skillList = [skills];
-            } catch (_) {
-              skillList = [skills];
-            }
+          if (Array.isArray(team.leader.driverskill)) {
+            skillList = team.leader.driverskill.map(s => {
+              const name = s.cartype?.cartypename || '';
+              const id = s.car_type_id || '';
+              return `${name} ${id}`;
+            });
           }
+          
+          // หากไม่มีข้อมูลสกิลเลย ให้ถือว่าขับได้ทั่วไป (Fallback)
+          if (skillList.length === 0) return true;
 
           const skillStr = skillList.join(' ').toLowerCase();
 
           if (reqType === 1) {
             // รถไฟฟ้า (EV)
-            return skillStr.includes('ev') || skillStr.includes('electric') || skillStr.includes('ไฟฟ้า');
+            return skillStr.includes('ev') || skillStr.includes('electric') || skillStr.includes('ไฟฟ้า') || skillStr.includes('1');
           } else if (reqType === 2) {
             // เกียร์ธรรมดา (Manual)
-            return skillStr.includes('manual') || skillStr.includes('ธรรมดา') || skillStr.includes('กระปุก');
+            return skillStr.includes('manual') || skillStr.includes('ธรรมดา') || skillStr.includes('กระปุก') || skillStr.includes('2');
           } else if (reqType === 3) {
             // เกียร์ออโต้ (Auto)
-            return skillStr.includes('auto') || skillStr.includes('ออโต้') || skillStr.length === 0;
+            return skillStr.includes('auto') || skillStr.includes('ออโต้') || skillStr.includes('3');
           }
           return true;
         });
