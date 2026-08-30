@@ -142,48 +142,6 @@ class BuddyRequestModel {
     const primaryStatus = isPubJob ? 'รอคนขับ' : 'กำลังค้นหาคนขับ';
     const secondaryStatus = isPubJob ? 'กำลังค้นหาคนขับ' : 'รอคนขับ';
 
-    // 0. ตรวจสอบทักษะการขับขี่รถยนต์ของคนขับหลัก (Leader) ในทีมบัดดี้
-    try {
-      const { data: teamInfo } = await supabase
-        .from('buddyteam')
-        .select('leaderid')
-        .eq('buddyteamid', cleanBuddyTeamId)
-        .maybeSingle();
-
-      if (teamInfo && teamInfo.leaderid) {
-        let reqCarType = null;
-        const { data: pubReq } = await supabase.from('requestbypub').select('requiredcartype').eq('requestid', cleanRequestId).maybeSingle();
-        if (pubReq && pubReq.requiredcartype) {
-          reqCarType = pubReq.requiredcartype;
-        } else {
-          const { data: userReq } = await supabase.from('requestbyuser').select('user_car_id').eq('requestid', cleanRequestId).maybeSingle();
-          if (userReq && userReq.user_car_id) {
-            const { data: uCar } = await supabase.from('usercar').select('car_type').eq('usercarid', userReq.user_car_id).maybeSingle();
-            if (uCar && uCar.car_type) reqCarType = uCar.car_type;
-          }
-        }
-
-        if (reqCarType) {
-          const { data: leaderSkills } = await supabase
-            .from('driverskill')
-            .select('car_type_id')
-            .eq('driver_id', teamInfo.leaderid);
-
-          const skillIds = (leaderSkills || []).map(s => s.car_type_id);
-          const effectiveSkills = skillIds.length > 0 ? skillIds : [3];
-          if (!effectiveSkills.includes(Number(reqCarType))) {
-            const carTypeNames = { 1: 'Electric / EV', 2: 'Manual (เกียร์ธรรมดา)', 3: 'Auto (เกียร์อัตโนมัติ)' };
-            throw new Error(`คุณไม่มีทักษะการขับขี่สำหรับรถประเภท ${carTypeNames[reqCarType] || reqCarType}`);
-          }
-        }
-      }
-    } catch (skillValidationErr) {
-      if (skillValidationErr.message && skillValidationErr.message.includes('ไม่มีทักษะการขับขี่')) {
-        throw skillValidationErr;
-      }
-      console.error("Warning in driver skill validation:", skillValidationErr);
-    }
-
     let jobData = null;
     let jobError = null;
 

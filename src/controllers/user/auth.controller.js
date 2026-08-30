@@ -1,18 +1,11 @@
 const AuthService = require('../../services/user/auth.service.js');
-const { generateToken } = require('../../middlewares/authMiddleware.js');
 
 const login = async (req, res) => {
     try {
         const { phone, password } = req.body;
         const user = await AuthService.login(phone, password);
-        const token = generateToken({
-            id: user.userid || user.id,
-            phone: user.phoneno || phone,
-            role: 'user'
-        });
         return res.status(200).json({
             message: 'Login successful',
-            token: token,
             user: user
         });
     } catch (error) {
