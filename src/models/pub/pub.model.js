@@ -119,13 +119,25 @@ const checkDuplicatePhoneCrossTable = async (phone) => {
 const findByTaxNumber = async (taxNumber) => {
   if (!taxNumber) return null
   const cleanTax = String(taxNumber).trim()
-  const { data, error } = await supabase
+  const { data: pubData, error } = await supabase
     .from('pub')
     .select('taxnumber, regisstatus')
     .eq('taxnumber', cleanTax)
 
-  if (error || !data || data.length === 0) return null
-  return data.find(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected') || null
+  if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) {
+    return pubData.find(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')
+  }
+
+  const { data: driverData } = await supabase
+    .from('driver')
+    .select('idcard, registerstatus')
+    .eq('idcard', cleanTax)
+
+  if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) {
+    return driverData.find(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')
+  }
+
+  return null
 }
 
 // ── Query: ตรวจสอบเลขบัญชีซ้ำข้ามตาราง (pub & driver) ──────────────────────

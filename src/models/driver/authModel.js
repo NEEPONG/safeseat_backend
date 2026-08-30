@@ -126,6 +126,14 @@ class AuthModel {
       .eq('idcard', cleanId);
 
     if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true;
+
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('taxnumber, regisstatus')
+      .eq('taxnumber', cleanId);
+
+    if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true;
+
     return false;
   }
 
