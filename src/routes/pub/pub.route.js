@@ -7,7 +7,7 @@
 //   POST /api/pub/register            → รับการสมัครสมาชิก
 //   POST /api/pub/check-email         → ตรวจสอบอีเมลซ้ำ
 //   GET  /api/pub/status/:username    → ดูสถานะการลงทะเบียน
-//   GET  /api/pub/profile/:username   → ดูข้อมูล profile ของร้าน
+//   GET  /api/pub/profile/:username   → ดูข้อมูล profile ของสถานบันเทิง
 //
 // Pattern: Route → Controller → Service → Model → Database
 // ไฟล์นี้เป็นแค่ "ตัวเชื่อม" ระหว่าง URL กับ Controller function
@@ -23,7 +23,7 @@ const upload = multer({ dest: 'uploads/' })
 // Import controller functions (เป็น async functions ที่จัดการ req/res)
 const { login, register, checkEmail, getStatus, getProfile } = require('../../controllers/pub/pub.controller')
 
-const { requestDriver, getServiceInfo, getServiceRequestById, simulateStep } = require('../../controllers/pub/service.controller')
+const { requestDriver, getServiceInfo, getServiceRequestById, simulateStep, cancelServiceRequest } = require('../../controllers/pub/service.controller')
 
 const { validateServiceRequest } = require('../../middlewares/validate')
 const { authenticateToken } = require('../../middlewares/authMiddleware')
@@ -73,8 +73,8 @@ router.get('/service-info/:username', authenticateToken, getServiceInfo)
 // Params: requestId — ดึง request เดียวสำหรับ polling สถานะ (หน้า Waiting)
 router.get('/service-request/:requestId', getServiceRequestById)
 
-// POST /api/pub/service-request/:requestId/simulate-step
-// Body: { step } — จำลองขั้นตอนการเดินทาง
-router.post('/service-request/:requestId/simulate-step', simulateStep)
+// DELETE /api/pub/service-request/:requestId
+// Params: requestId — ยกเลิกและลบรายการเรียกรถออกจากระบบแบบสมบูรณ์
+router.delete('/service-request/:requestId', cancelServiceRequest)
 
 module.exports = router

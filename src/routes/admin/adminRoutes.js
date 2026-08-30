@@ -8,19 +8,19 @@ const adminAuth = [authenticateToken, requireRole('admin')];
 // POST /api/admin/login  -> เข้าสู่ระบบ
 router.post('/login', AdminController.login);
 
-// GET /api/admin/stats  -> ดึงสถิติจำนวนคนขับ ร้านค้า และรายงานทั้งหมด
+// GET /api/admin/stats  -> ดึงสถิติจำนวนคนขับ สถานบันเทิง และรายงานทั้งหมด
 router.get('/stats', adminAuth, AdminController.getStats);
 
 // GET /api/admin/drivers  -> ดึงรายชื่อคนขับทั้งหมดพร้อมเอกสารสมัคร
 router.get('/drivers', adminAuth, AdminController.getDrivers);
 
-// GET /api/admin/pubs  -> ดึงรายชื่อร้านประกอบการทั้งหมด
+// GET /api/admin/pubs  -> ดึงรายชื่อสถานประกอบการทั้งหมด
 router.get('/pubs', adminAuth, AdminController.getPubs);
 
 // PUT /api/admin/drivers/:username/status -> เปลี่ยนสถานะการอนุมัติคนขับ
 router.put('/drivers/:username/status', adminAuth, AdminController.updateDriverStatus);
 
-// PUT /api/admin/pubs/:username/status -> เปลี่ยนสถานะการอนุมัติร้านค้า
+// PUT /api/admin/pubs/:username/status -> เปลี่ยนสถานะการอนุมัติสถานบันเทิง
 router.put('/pubs/:username/status', adminAuth, AdminController.updatePubStatus);
 
 // GET /api/admin/driver-reports -> ดึงประวัติรายงานความประพฤติคนขับทั้งหมด

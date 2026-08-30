@@ -185,7 +185,7 @@ class AdminController {
       if (status === 'pending') thaiStatus = 'รอดำเนินการ';
 
       const data = await AdminModel.updatePubStatus(username, thaiStatus);
-      if (!data) return res.status(404).json({ error: 'ไม่พบผู้ประกอบการร้านนี้' });
+      if (!data) return res.status(404).json({ error: 'ไม่พบผู้ประกอบการสถานบันเทิงนี้' });
 
       return res.status(200).json({
         success: true,

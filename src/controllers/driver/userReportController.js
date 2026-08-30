@@ -11,6 +11,15 @@ class UserReportController {
         return res.status(400).json({ error: 'reporttype and request_id are required' });
       }
 
+      // ตรวจสอบว่าเคยรายงานลูกค้ารายการนี้ไปแล้วหรือยัง (รายงานได้ครั้งเดียวต่อรายการ)
+      const existing = await UserReportModel.findExistingReportByRequestId(request_id);
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          error: 'รายการจองนี้ได้รับการส่งรายงานไปแล้ว (สามารถรายงานได้เพียง 1 ครั้งต่อรายการ)'
+        });
+      }
+
       let reportimagepath = null;
       if (req.file) {
         try {
@@ -25,7 +34,7 @@ class UserReportController {
       const reportData = {
         reporttype,
         reportdetail: reportdetail || '',
-        request_id: parseInt(request_id),
+        request_id: parseInt(request_id, 10),
         reportstatus: 'รอดำเนินการ',
       };
 

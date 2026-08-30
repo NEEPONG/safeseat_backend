@@ -37,7 +37,7 @@ const login = async (req, res) => {
   } catch (err) {
     // เกิด error: ส่ง HTTP 400 พร้อมข้อความ error
     // 400 Bad Request = ข้อมูลที่ส่งมาไม่ถูกต้อง
-    res.status(400).json({ success: false, message: err.message })
+    res.status(400).json({ success: false, message: err.message, error: err.message })
   }
 }
 
@@ -73,16 +73,19 @@ const register = async (req, res) => {
 
 // ── Check Email & Phone & TaxNumber Handler ─────────────────────
 // รับ POST /api/pub/check-email
-// Body: { email?: string, pubEmail?: string, phone?: string, pubPhone?: string, taxNumber?: string, taxnumber?: string }
+// Body: { email?: string, pubEmail?: string, phone?: string, pubPhone?: string, taxNumber?: string, taxnumber?: string, bankAccountNo?: string, username?: string, pubName?: string, pubname?: string }
 const checkEmail = async (req, res) => {
   try {
     const emailVal = req.body.email || req.body.pubEmail
     const phoneVal = req.body.phone || req.body.pubPhone
     const taxVal = req.body.taxNumber || req.body.taxnumber
-    await pubService.checkEmail(emailVal, phoneVal, taxVal)
+    const bankVal = req.body.bankAccountNo || req.body.bankaccountno
+    const userVal = req.body.username
+    const pubNameVal = req.body.pubName || req.body.pubname
+    await pubService.checkEmail(emailVal, phoneVal, taxVal, bankVal, userVal, pubNameVal)
     res.json({ success: true, message: 'ข้อมูลสามารถใช้งานได้' })
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message })
+    res.status(400).json({ success: false, error: err.message, message: err.message })
   }
 }
 

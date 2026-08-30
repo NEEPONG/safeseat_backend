@@ -1,5 +1,6 @@
 const supabase = require('./dbClient');
 const { formatDriverDocs } = require('../../utils/supabaseStorage');
+const { getThaiCurrentISOString } = require('../../utils/thaiDate');
 const bcrypt = require('bcrypt');
 
 class AuthModel {
@@ -33,17 +34,32 @@ class AuthModel {
     return formatDriverDocs(data);
   }
 
-  // ตรวจสอบว่ามี username นี้อยู่ในระบบแล้วหรือยัง (ยกเว้นผู้ที่ถูกปฏิเสธ)
+  // ตรวจสอบว่ามี username นี้อยู่ในระบบแล้วหรือยัง (ข้ามตาราง driver, pub, admin)
   static async checkDuplicateUsername(username) {
-    const { data, error } = await supabase
+    if (!username) return false;
+    const cleanUser = String(username).trim();
+    const { data: driverData } = await supabase
       .from('driver')
       .select('username, registerstatus')
-      .eq('username', username)
-      .maybeSingle();
+      .eq('username', cleanUser);
 
-    if (error || !data) return false;
-    if (data.registerstatus === 'ปฏิเสธ' || data.registerstatus === 'rejected') return false;
-    return true;
+    if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true;
+
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('username, regisstatus')
+      .eq('username', cleanUser);
+
+    if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true;
+
+    const { data: adminData } = await supabase
+      .from('admin')
+      .select('username')
+      .eq('username', cleanUser);
+
+    if (adminData && adminData.length > 0) return true;
+
+    return false;
   }
 
   // ดึงสถานะการสมัครสมาชิกของคนขับ
@@ -61,21 +77,20 @@ class AuthModel {
   // Check if email already exists in driver or pub (excluding rejected)
   static async checkDuplicateEmail(email) {
     if (!email) return false;
+    const cleanEmail = String(email).trim().toLowerCase();
     const { data: driverData } = await supabase
       .from('driver')
       .select('email, registerstatus')
-      .eq('email', email)
-      .maybeSingle();
+      .ilike('email', cleanEmail);
 
-    if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true;
+    if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true;
 
     const { data: pubData } = await supabase
       .from('pub')
       .select('pubemail, regisstatus')
-      .eq('pubemail', email)
-      .maybeSingle();
+      .ilike('pubemail', cleanEmail);
 
-    if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true;
+    if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true;
 
     return false;
   }
@@ -83,36 +98,56 @@ class AuthModel {
   // Check if phone number already exists in driver or pub (excluding rejected)
   static async checkDuplicatePhone(phoneno) {
     if (!phoneno) return false;
+    const cleanPhone = String(phoneno).trim();
     const { data: driverData } = await supabase
       .from('driver')
       .select('phoneno, registerstatus')
-      .eq('phoneno', phoneno)
-      .maybeSingle();
+      .eq('phoneno', cleanPhone);
 
-    if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true;
+    if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true;
 
     const { data: pubData } = await supabase
       .from('pub')
       .select('pubphone, regisstatus')
-      .eq('pubphone', phoneno)
-      .maybeSingle();
+      .eq('pubphone', cleanPhone);
 
-    if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true;
+    if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true;
 
     return false;
   }
 
   // ตรวจสอบว่ามีเลขบัตรประชาชนนี้อยู่ในระบบแล้วหรือยัง (excluding rejected)
   static async checkDuplicateIdCard(idcard) {
-    const { data, error } = await supabase
+    if (!idcard) return false;
+    const cleanId = String(idcard).trim();
+    const { data: driverData } = await supabase
       .from('driver')
       .select('idcard, registerstatus')
-      .eq('idcard', idcard)
-      .maybeSingle();
+      .eq('idcard', cleanId);
 
-    if (error || !data) return false;
-    if (data.registerstatus === 'ปฏิเสธ' || data.registerstatus === 'rejected') return false;
-    return true;
+    if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true;
+    return false;
+  }
+
+  // ตรวจสอบว่ามีเลขที่บัญชีธนาคารนี้อยู่ในระบบแล้วหรือยัง (excluding rejected)
+  static async checkDuplicateBankAccount(bankAccountNo) {
+    if (!bankAccountNo) return false;
+    const cleanAcc = String(bankAccountNo).trim();
+    const { data: driverData } = await supabase
+      .from('driver')
+      .select('bankaccountno, registerstatus')
+      .eq('bankaccountno', cleanAcc);
+
+    if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true;
+
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('bankaccountno, regisstatus')
+      .eq('bankaccountno', cleanAcc);
+
+    if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true;
+
+    return false;
   }
 
   // ตรวจสอบว่ามีทะเบียนยานพาหนะนี้อยู่ในระบบแล้วหรือยัง (Normalized เปรียบเทียบ)
@@ -127,8 +162,8 @@ class AuthModel {
     return data.some(c => c.carplate && String(c.carplate).replace(/[\s-]/g, '').toLowerCase() === cleanInput);
   }
 
-  // สมัครสมาชิกคนขับพร้อมทั้งลงทะเบียนข้อมูลรถยนต์
-  static async register(driverData, carData) {
+  // สมัครสมาชิกคนขับพร้อมทั้งลงทะเบียนข้อมูลรถยนต์และทักษะประเภทรถที่ขับได้
+  static async register(driverData, carData, skillIds = [3]) {
     // 0. ตรวจสอบว่าเดิมมีบัญชีที่เคยถูกปฏิเสธอยู่หรือไม่ -> ถ้ามีให้ทำการอัปเดตแทนการ insert ใหม่
     const { data: existingDriver } = await supabase
       .from('driver')
@@ -148,7 +183,7 @@ class AuthModel {
         .update({
           ...driverData,
           registerstatus: 'รอดำเนินการ',
-          regisdate: new Date().toISOString()
+          regisdate: getThaiCurrentISOString()
         })
         .eq('username', driverData.username)
         .select()
@@ -157,6 +192,16 @@ class AuthModel {
       if (driverErr) {
         console.error("Error resubmitting driver:", driverErr);
         throw new Error(`ไม่สามารถอัปเดตข้อมูลการสมัครได้: ${driverErr.message}`);
+      }
+
+      // บันทึกทักษะประเภทรถยนต์ลงตาราง driverskill
+      if (skillIds && skillIds.length > 0) {
+        await supabase.from('driverskill').delete().eq('driver_id', driverData.username);
+        const skillRows = skillIds.map(typeId => ({
+          driver_id: driverData.username,
+          car_type_id: typeId
+        }));
+        await supabase.from('driverskill').insert(skillRows);
       }
 
       return {
@@ -205,6 +250,20 @@ class AuthModel {
         console.error("Failed to clean up car record after driver insert error:", cleanupError);
       }
       throw new Error(`ไม่สามารถสมัครสมาชิกได้: ${driverError.message}`);
+    }
+
+    // 3. บันทึกทักษะประเภทรถยนต์ลงตาราง driverskill
+    if (skillIds && skillIds.length > 0) {
+      try {
+        await supabase.from('driverskill').delete().eq('driver_id', driverData.username);
+        const skillRows = skillIds.map(typeId => ({
+          driver_id: driverData.username,
+          car_type_id: typeId
+        }));
+        await supabase.from('driverskill').insert(skillRows);
+      } catch (skillErr) {
+        console.error("Error inserting driver skills into driverskill:", skillErr);
+      }
     }
 
     return {

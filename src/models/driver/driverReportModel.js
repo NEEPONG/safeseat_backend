@@ -1,4 +1,5 @@
 const supabase = require('./dbClient');
+const { getThaiCurrentISOString } = require('../../utils/thaiDate');
 
 class DriverReportModel {
   // ดึงข้อมูลรายงานทั้งหมด
@@ -93,11 +94,34 @@ class DriverReportModel {
     });
   }
 
-  // สร้างรายงานใหม่
-  static async createReport(reportData) {
+  // ตรวจสอบว่ามีรายงานของ request_id นี้แล้วหรือไม่
+  static async findExistingReportByRequestId(requestId) {
+    if (!requestId) return null;
+    const reqIdNum = parseInt(requestId, 10);
+    if (isNaN(reqIdNum)) return null;
+
     const { data, error } = await supabase
       .from('driverreport')
-      .insert([reportData])
+      .select('*')
+      .or(`request_id.eq.${reqIdNum},reportindex.eq.${reqIdNum}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error checking existing driver report:', error);
+    }
+    return data;
+  }
+
+  // สร้างรายงานใหม่
+  static async createReport(reportData) {
+    const payload = {
+      ...reportData,
+      reportdate: reportData.reportdate || getThaiCurrentISOString()
+    };
+    const { data, error } = await supabase
+      .from('driverreport')
+      .insert([payload])
       .select()
       .maybeSingle();
 

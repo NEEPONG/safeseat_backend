@@ -1,4 +1,5 @@
 const { supabase } = require('../../config/supabase.js');
+const { getThaiCurrentISOString } = require('../../utils/thaiDate');
 
 class RequestService {
     /**
@@ -51,6 +52,7 @@ class RequestService {
             requeststatus: 'กำลังค้นหาคนขับ',
             user_id: user_id,
             user_car_id: parseInt(user_car_id, 10),
+            reqdatetime: getThaiCurrentISOString(),
         };
 
         const { data, error } = await supabase
@@ -107,49 +109,82 @@ class RequestService {
         request.custname = custName;
 
         // If a driver buddy team is assigned, load its details
-        if (request.buddy_team_id) {
-            const { data: team } = await supabase
-                .from('buddyteam')
-                .select('*')
-                .eq('buddyteamid', request.buddy_team_id)
-                .maybeSingle();
-            request.buddyteam = team;
-
-            if (team) {
-                // Fetch leader and follower driver profiles
-                const { data: leaderRow } = await supabase
-                    .from('driver')
-                    .select('username, firstname, lastname, phoneno, drivercar:driver_car(carplate)')
-                    .eq('username', team.leaderid)
+        const buddyTeamId = request.buddy_team_id || request.buddyteamid || request.buddyteam_id;
+        if (buddyTeamId) {
+            try {
+                const teamIdNum = parseInt(buddyTeamId, 10);
+                const { data: team } = await supabase
+                    .from('buddyteam')
+                    .select('*')
+                    .eq('buddyteamid', teamIdNum)
                     .maybeSingle();
-                const { data: followerRow } = await supabase
-                    .from('driver')
-                    .select('username, firstname, lastname, phoneno')
-                    .eq('username', team.followerid)
-                    .maybeSingle();
+                request.buddyteam = team;
+                request.buddy_team_id = teamIdNum;
 
-                if (leaderRow) {
-                    request.leader = {
-                        firstname: leaderRow.firstname,
-                        lastname: leaderRow.lastname,
-                        phoneno: leaderRow.phoneno,
-                        phone_no: leaderRow.phoneno,
-                        license_plate: leaderRow.drivercar?.carplate || '—'
-                    };
-                } else {
-                    request.leader = null;
-                }
+                if (team) {
+                    let leaderRow = null;
+                    if (team.leaderid) {
+                        const { data: lRow } = await supabase
+                            .from('driver')
+                            .select('username, firstname, lastname, phoneno')
+                            .eq('username', team.leaderid)
+                            .maybeSingle();
+                        leaderRow = lRow;
+                    }
 
-                if (followerRow) {
-                    request.follower = {
-                        firstname: followerRow.firstname,
-                        lastname: followerRow.lastname,
-                        phoneno: followerRow.phoneno,
-                        phone_no: followerRow.phoneno
-                    };
-                } else {
-                    request.follower = null;
+                    let carPlate = '—';
+                    if (team.leaderid) {
+                        try {
+                            const { data: carRow } = await supabase
+                                .from('driver_car')
+                                .select('carplate')
+                                .eq('username', team.leaderid)
+                                .maybeSingle();
+                            if (carRow && carRow.carplate) {
+                                carPlate = carRow.carplate;
+                            }
+                        } catch (carErr) {
+                            console.warn("Could not load car plate for leader", carErr);
+                        }
+                    }
+
+                    let followerRow = null;
+                    if (team.followerid) {
+                        const { data: fRow } = await supabase
+                            .from('driver')
+                            .select('username, firstname, lastname, phoneno')
+                            .eq('username', team.followerid)
+                            .maybeSingle();
+                        followerRow = fRow;
+                    }
+
+                    if (leaderRow) {
+                        request.leader = {
+                            firstname: leaderRow.firstname,
+                            lastname: leaderRow.lastname,
+                            phoneno: leaderRow.phoneno,
+                            phone_no: leaderRow.phoneno,
+                            phone: leaderRow.phoneno,
+                            license_plate: carPlate
+                        };
+                    } else {
+                        request.leader = null;
+                    }
+
+                    if (followerRow) {
+                        request.follower = {
+                            firstname: followerRow.firstname,
+                            lastname: followerRow.lastname,
+                            phoneno: followerRow.phoneno,
+                            phone_no: followerRow.phoneno,
+                            phone: followerRow.phoneno
+                        };
+                    } else {
+                        request.follower = null;
+                    }
                 }
+            } catch (teamErr) {
+                console.error("Error populating driver team info for user request:", teamErr);
             }
         }
 

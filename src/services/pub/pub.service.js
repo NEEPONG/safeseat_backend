@@ -14,6 +14,7 @@
 
 const PubModel = require('../../models/pub/pub.model')
 const bcrypt = require('bcrypt')
+const { getThaiCurrentISOString } = require('../../utils/thaiDate')
 
 // ── Regex Patterns ────────────────────────────────────────────
 // ตัวแปร regex นิยามนอก function เพื่อ compile ครั้งเดียว (ประหยัด memory)
@@ -76,13 +77,13 @@ const registerPub = async (pubData) => {
   // ── Validation 4: ตรวจสอบเบอร์โทรศัพท์ ────────────────────
   // ^0        = ขึ้นต้นด้วย 0
   // [0-9]{8,9} = ตามด้วยตัวเลข 8-9 ตัว (รวมทั้งหมด 9-10 หลัก)
-  if (!/^0[0-9]{8,9}$/.test(pubPhone)) {
-    throw new Error('หมายเลขโทรศัพท์ไม่ถูกต้อง')
+  if (!/^0[689][0-9]{8}$/.test(pubPhone)) {
+    throw new Error('หมายเลขโทรศัพท์ต้องเป็นตัวเลข 10 หลัก ขึ้นต้นด้วย 06, 08 หรือ 09 เท่านั้น')
   }
 
   // ── Validation 5: ตรวจสอบ lat/lng เป็น number จริง ─────────
   if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) {
-    throw new Error('กรุณาปักหมุดตำแหน่งร้านผ่านแผนที่')
+    throw new Error('กรุณาปักหมุดตำแหน่งสถานบันเทิงผ่านแผนที่')
   }
 
   // ── Validation 6: เลขผู้เสียภาษี 13 หลัก ──────────────────
@@ -127,7 +128,7 @@ const registerPub = async (pubData) => {
           pubaddresslng: lng,
           regisimagepath: regisImagePath || existing.regisimagepath,
           regisstatus: 'รอดำเนินการ',
-          regisdate: new Date().toISOString(),
+          regisdate: getThaiCurrentISOString(),
         })
         .eq('username', username)
         .select()
@@ -180,12 +181,12 @@ const registerPub = async (pubData) => {
 
     pubaddresslat: lat,
     pubaddresslng: lng,
-    regisimagepath: regisImagePath || null,
+    regisimagepath: regisImagePath || JSON.stringify({ license: null, storefront: null }),
 
     // กำหนด status เริ่มต้นเป็น 'รอดำเนินการ' (รอ admin อนุมัติ)
     regisstatus: 'รอดำเนินการ',
-    // บันทึกวันที่สมัคร (ISO String)
-    regisdate:   new Date().toISOString(),
+    // บันทึกวันที่สมัคร (Thai ISO String)
+    regisdate:   getThaiCurrentISOString(),
   })
 }
 
@@ -214,9 +215,15 @@ const loginPub = async (username, password) => {
 }
 
 // ════════════════════════════════════════════════════════════════
-// checkEmail / checkCredentials — ตรวจสอบอีเมล, เบอร์โทร, เลขผู้เสียภาษีซ้ำ
+// checkEmail / checkCredentials — ตรวจสอบชื่อร้าน, อีเมล, เบอร์โทร, เลขผู้เสียภาษี, บัญชี, username ซ้ำ
 // ════════════════════════════════════════════════════════════════
-const checkEmail = async (email, phone, taxNumber) => {
+const checkEmail = async (email, phone, taxNumber, bankAccountNo, username, pubName) => {
+  if (pubName) {
+    const existingPub = await PubModel.findByPubName(pubName)
+    if (existingPub) {
+      throw new Error('ชื่อสถานประกอบการนี้มีในระบบแล้ว กรุณาใช้ชื่ออื่น')
+    }
+  }
   if (email) {
     const existing = await PubModel.checkDuplicateEmailCrossTable(email)
     if (existing) {
@@ -233,6 +240,18 @@ const checkEmail = async (email, phone, taxNumber) => {
     const existingTax = await PubModel.findByTaxNumber(taxNumber)
     if (existingTax) {
       throw new Error('เลขผู้เสียภาษีนี้มีในระบบแล้ว กรุณาตรวจสอบอีกครั้ง')
+    }
+  }
+  if (bankAccountNo) {
+    const existingBank = await PubModel.checkDuplicateBankAccountCrossTable(bankAccountNo)
+    if (existingBank) {
+      throw new Error('เลขบัญชีธนาคารนี้มีในระบบแล้ว กรุณาใช้บัญชีอื่น')
+    }
+  }
+  if (username) {
+    const existingUser = await PubModel.checkDuplicateUsernameCrossTable(username)
+    if (existingUser) {
+      throw new Error('ชื่อผู้ใช้นี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น')
     }
   }
   return true

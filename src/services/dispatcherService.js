@@ -15,7 +15,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 class DispatcherService {
   static start() {
-    console.log('[Dispatcher] 🟢 เริ่มต้นระบบดักจับงานจากผู้ใช้และร้านค้า...');
+    console.log('[Dispatcher] 🟢 เริ่มต้นระบบดักจับงานจากผู้ใช้และสถานบันเทิง...');
 
     // ดักฟังตาราง requestbyuser เมื่อมีข้อมูลใหม่ถูก Insert
     supabase
@@ -37,7 +37,7 @@ class DispatcherService {
         const newJob = payload.new;
         
         if (newJob.requeststatus === 'รอคนขับ') {
-          console.log(`[Dispatcher] 🔔 พบงานใหม่จากร้านค้า! Request ID: ${newJob.requestid}`);
+          console.log(`[Dispatcher] 🔔 พบงานใหม่จากสถานบันเทิง! Request ID: ${newJob.requestid}`);
           await DispatcherService.dispatchJob(newJob, 'pub');
         }
       })
@@ -71,6 +71,48 @@ class DispatcherService {
 
       if (eligibleTeams.length === 0) {
         console.log(`[Dispatcher] ❌ ไม่มีทีมคนขับที่สอดคล้องกับเงื่อนไข Lady Mode หรือไม่มีทีมว่าง (Request ID: ${job.requestid})`);
+        return;
+      }
+
+      // กรองตามประเภทรถยนต์ที่ลูกค้า/สถานบันเทิงต้องการ (Driver Skills: 1 = EV, 2 = Manual, 3 = Auto)
+      let requiredCarType = job.requiredcartype;
+      if (!requiredCarType && job.user_car_id) {
+        const { data: uCar } = await supabase
+          .from('usercar')
+          .select('car_type')
+          .eq('usercarid', job.user_car_id)
+          .maybeSingle();
+        if (uCar && uCar.car_type) {
+          requiredCarType = uCar.car_type;
+        }
+      }
+      if (!requiredCarType) {
+        requiredCarType = 3; // Default เป็น Auto
+      }
+
+      const carTypeNames = { 1: 'Electric / EV', 2: 'Manual (เกียร์ธรรมดา)', 3: 'Auto (เกียร์อัตโนมัติ)' };
+      console.log(`[Dispatcher] 🔍 ตรวจสอบทักษะคนขับสำหรับรถประเภท: ${carTypeNames[requiredCarType] || requiredCarType} (ID: ${requiredCarType})`);
+
+      const leaderUsernames = eligibleTeams.map(t => t.leaderid).filter(Boolean);
+      const { data: skillsData } = await supabase
+        .from('driverskill')
+        .select('driver_id, car_type_id')
+        .in('driver_id', leaderUsernames);
+
+      eligibleTeams = eligibleTeams.filter(team => {
+        const leaderSkills = (skillsData || [])
+          .filter(s => s.driver_id === team.leaderid)
+          .map(s => s.car_type_id);
+        const effectiveSkills = leaderSkills.length > 0 ? leaderSkills : [3];
+        const hasSkill = effectiveSkills.includes(Number(requiredCarType));
+        if (!hasSkill) {
+          console.log(`[Dispatcher] ⚠️ ข้าม Team ID ${team.buddyteamid} (Leader ${team.leaderid} ไม่มีทักษะขับขี่รถประเภท ${carTypeNames[requiredCarType]})`);
+        }
+        return hasSkill;
+      });
+
+      if (eligibleTeams.length === 0) {
+        console.log(`[Dispatcher] ❌ ไม่มีทีมคนขับที่มีทักษะขับขี่รถประเภท ${carTypeNames[requiredCarType]} (Request ID: ${job.requestid})`);
         return;
       }
 

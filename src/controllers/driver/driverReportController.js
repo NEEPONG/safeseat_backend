@@ -24,17 +24,31 @@ class DriverReportController {
   static async createReport(req, res) {
     try {
       const reportData = req.body;
+      const requestId = reportData.request_id || reportData.reportindex;
       
       // Basic validation
-      if (!reportData.reporttype || !reportData.request_id) {
+      if (!reportData.reporttype || !requestId) {
         return res.status(400).json({ error: 'reporttype and request_id are required' });
       }
 
+      // ตรวจสอบว่าเคยรายงานรายการนี้ไปแล้วหรือยัง (รายงานได้ครั้งเดียวต่อรายการ)
+      const existing = await DriverReportModel.findExistingReportByRequestId(requestId);
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          error: 'รายการจองนี้ได้รับการส่งรายงานไปแล้ว (สามารถรายงานได้เพียง 1 ครั้งต่อรายการ)'
+        });
+      }
+
       const newReport = await DriverReportModel.createReport(reportData);
-      return res.status(201).json(newReport);
+      return res.status(201).json({
+        success: true,
+        message: 'สร้างรายงานความประพฤติคนขับเรียบร้อยแล้ว',
+        data: newReport
+      });
     } catch (error) {
       console.error("Error creating driver report:", error);
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: error.message || 'Internal server error' });
     }
   }
 }

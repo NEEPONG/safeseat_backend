@@ -2,7 +2,7 @@
 // middlewares/validate.js — Centralized Input Validation Middleware
 // ═══════════════════════════════════════════════════════════════
 
-const PHONE_REGEX = /^0[0-9]{9}$/;
+const PHONE_REGEX = /^0[689][0-9]{8}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_REGEX = /^[a-zA-Z0-9]{6,50}$/;
 const PASSWORD_REGEX = /^(?=.*[!#_.])[a-zA-Z0-9!#_.]{8,50}$/;
