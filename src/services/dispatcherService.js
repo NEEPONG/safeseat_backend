@@ -69,44 +69,89 @@ class DispatcherService {
         console.log(`[Dispatcher] กรองทีมสำหรับ Lady Mode (เหลือ ${eligibleTeams.length} ทีมจาก ${teams.length} ทีม)`);
       }
 
+      // หา requiredcartype ของงาน (ถ้ามาจาก user และไม่มี requiredcartype ใน payload ให้ดึงจากตาราง usercar)
+      let requiredCarType = job.requiredcartype ? parseInt(job.requiredcartype, 10) : null;
+      let carModelName = job.carmodel || null;
+      let carPlateName = job.carplate || null;
+
+      if (!requiredCarType && job.user_car_id) {
+        try {
+          const { data: userCarData } = await supabase
+            .from('usercar')
+            .select('car_type, carbrand, carmodel, carplate, cartype(cartypename)')
+            .eq('usercarid', parseInt(job.user_car_id, 10))
+            .maybeSingle();
+
+          if (userCarData) {
+            if (userCarData.car_type) {
+              const ct = userCarData.car_type;
+              if (typeof ct === 'number') {
+                requiredCarType = ct;
+              } else {
+                const ctStr = String(ct).toLowerCase();
+                if (ctStr.includes('ev') || ctStr.includes('electric') || ctStr.includes('ไฟฟ้า') || ctStr === '1') requiredCarType = 1;
+                else if (ctStr.includes('manual') || ctStr.includes('ธรรมดา') || ctStr.includes('กระปุก') || ctStr === '2') requiredCarType = 2;
+                else requiredCarType = 3;
+              }
+            } else if (userCarData.cartype?.cartypename) {
+              const name = userCarData.cartype.cartypename.toLowerCase();
+              if (name.includes('ev') || name.includes('electric') || name.includes('ไฟฟ้า')) requiredCarType = 1;
+              else if (name.includes('manual') || name.includes('ธรรมดา') || name.includes('กระปุก')) requiredCarType = 2;
+              else requiredCarType = 3;
+            }
+
+            if (!carModelName && (userCarData.carbrand || userCarData.carmodel)) {
+              carModelName = `${userCarData.carbrand || ''} ${userCarData.carmodel || ''}`.trim();
+            }
+            if (!carPlateName && userCarData.carplate) {
+              carPlateName = userCarData.carplate;
+            }
+          }
+        } catch (e) {
+          console.error('[Dispatcher] Failed to fetch user car details:', e.message);
+        }
+      }
+
       // กรองตามประเภทรถ / ระบบเกียร์ของหัวหน้าทีม (Leader)
       // requiredcartype: 1 = EV/Electric, 2 = Manual, 3 = Auto
-      if (job.requiredcartype) {
-        const reqType = parseInt(job.requiredcartype, 10);
+      if (requiredCarType) {
+        const reqType = requiredCarType;
         eligibleTeams = eligibleTeams.filter(team => {
           if (!team.leader) return false;
           
-          let skillList = [];
-          if (Array.isArray(team.leader.driverskill)) {
-            skillList = team.leader.driverskill.map(s => {
-              const name = s.cartype?.cartypename || '';
-              const id = s.car_type_id || '';
-              return `${name} ${id}`;
-            });
-          }
+          const skills = Array.isArray(team.leader.driverskill) ? team.leader.driverskill : [];
           
-          // หากไม่มีข้อมูลสกิลเลย ให้ถือว่าขับได้ทั่วไป (Fallback)
-          if (skillList.length === 0) return true;
-
-          const skillStr = skillList.join(' ').toLowerCase();
+          // ดึงรายการ car_type_id และชื่อประเภทรถ
+          const skillTypeIds = skills.map(s => parseInt(s.car_type_id, 10)).filter(id => !isNaN(id));
+          const skillNames = skills.map(s => (s.cartype?.cartypename || '').toLowerCase());
+          const skillCombinedText = skillNames.join(' ');
 
           if (reqType === 1) {
-            // รถไฟฟ้า (EV)
-            return skillStr.includes('ev') || skillStr.includes('electric') || skillStr.includes('ไฟฟ้า') || skillStr.includes('1');
+            // รถไฟฟ้า (EV) - ต้องมี ID 1 หรือชื่อ EV/ไฟฟ้า
+            return skillTypeIds.includes(1) || 
+                   skillCombinedText.includes('ev') || 
+                   skillCombinedText.includes('electric') || 
+                   skillCombinedText.includes('ไฟฟ้า');
           } else if (reqType === 2) {
-            // เกียร์ธรรมดา (Manual)
-            return skillStr.includes('manual') || skillStr.includes('ธรรมดา') || skillStr.includes('กระปุก') || skillStr.includes('2');
+            // เกียร์ธรรมดา (Manual) - ต้องมี ID 2 หรือชื่อ Manual/ธรรมดา/กระปุก
+            return skillTypeIds.includes(2) || 
+                   skillCombinedText.includes('manual') || 
+                   skillCombinedText.includes('ธรรมดา') || 
+                   skillCombinedText.includes('กระปุก');
           } else if (reqType === 3) {
-            // เกียร์ออโต้ (Auto)
-            return skillStr.includes('auto') || skillStr.includes('ออโต้') || skillStr.includes('3');
+            // เกียร์ออโต้ (Auto) - มี ID 3, ชื่อ auto/ออโต้ หรือถ้าไม่มีการระบุสกิลใดๆ ให้ fallback เป็น Auto
+            if (skills.length === 0) return true;
+            return skillTypeIds.includes(3) || 
+                   skillCombinedText.includes('auto') || 
+                   skillCombinedText.includes('ออโต้');
           }
           return true;
         });
-        console.log(`[Dispatcher] กรองทีมตามประเภทรถ/เกียร์ของหัวหน้าทีม (Required: ${job.requiredcartype}) -> เหลือ ${eligibleTeams.length} ทีม`);
+        console.log(`[Dispatcher] กรองทีมตามประเภทรถ/เกียร์ของหัวหน้าทีม (Required: ${requiredCarType}) -> เหลือ ${eligibleTeams.length} ทีม`);
       }
 
       if (eligibleTeams.length === 0) {
-        console.log(`[Dispatcher] ❌ ไม่มีทีมคนขับที่สอดคล้องกับเงื่อนไข (Lady Mode / ประเภทรถ ${job.requiredcartype}) หรือไม่มีทีมว่าง (Request ID: ${job.requestid})`);
+        console.log(`[Dispatcher] ❌ ไม่มีทีมคนขับที่สอดคล้องกับเงื่อนไข (Lady Mode / ประเภทรถ ${requiredCarType || 'ไม่ระบุ'}) หรือไม่มีทีมว่าง (Request ID: ${job.requestid})`);
         return;
       }
 
@@ -137,9 +182,12 @@ class DispatcherService {
       if (nearestTeam) {
         console.log(`[Dispatcher] 🚀 ส่งงาน Request ID ${job.requestid} ไปที่ Team ID: ${nearestTeam.buddyteamid} (ระยะทางห่าง ${minDistance.toFixed(2)} กม.)`);
         
-        // แนบข้อมูลระยะทางเข้าไปในข้อมูลงานด้วย เพื่อให้คนขับเห็นว่าห่างเท่าไหร่
+        // แนบข้อมูลระยะทาง, ประเภทเกียร์ และข้อมูลรถเข้าไปในข้อมูลงานด้วย
         const jobPayload = {
             ...job,
+            requiredcartype: requiredCarType || job.requiredcartype,
+            carmodel: carModelName || job.carmodel,
+            carplate: carPlateName || job.carplate,
             reqdistance: minDistance.toFixed(2),
             job_source: type
         };
