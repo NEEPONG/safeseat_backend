@@ -26,7 +26,7 @@ class UserModel {
   static async getProfileByUsername(username) {
     const { data, error } = await supabase
       .from('driver')
-      .select('*, drivercar:driver_car(*)')
+      .select('*, drivercar:driver_car(*), driverskill(car_type_id, cartype(cartypeid, cartypename))')
       .or(`username.eq.${username},phoneno.eq.${username}`)
       .maybeSingle();
 
@@ -35,6 +35,12 @@ class UserModel {
     }
 
     if (data) {
+      // Map driverskill relation to driverskills array for frontend/app
+      if (Array.isArray(data.driverskill) && data.driverskill.length > 0) {
+        data.driverskills = data.driverskill.map(s => s.cartype ? s.cartype.cartypename : s.car_type_id).filter(Boolean);
+      } else {
+        data.driverskills = [];
+      }
       const { data: reviews, error: reviewError } = await supabase
         .from('review')
         .select('*')

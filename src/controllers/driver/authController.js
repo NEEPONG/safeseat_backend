@@ -6,12 +6,34 @@ class AuthController {
   static async login(req, res) {
     try {
       const { username, password, latitude, longitude } = req.body;
-      const user = await AuthModel.login(username, password, latitude, longitude);
+      const result = await AuthModel.login(username, password, latitude, longitude);
       
-      if (!user) {
-        return res.status(401).json({ error: 'Invalid username or password' });
+      if (!result) {
+        return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
       }
-      return res.status(200).json(user);
+
+      if (result.status === 'PENDING') {
+        return res.status(403).json({ 
+          error: 'บัญชีของคุณอยู่ระหว่างการรอตรวจสอบและอนุมัติจากผู้ดูแลระบบ',
+          registerstatus: result.registerstatus 
+        });
+      }
+
+      if (result.status === 'REJECTED') {
+        return res.status(403).json({ 
+          error: 'บัญชีของคุณไม่ผ่านการอนุมัติ กรุณาติดต่อผู้ดูแลระบบหรือสมัครใหม่',
+          registerstatus: result.registerstatus 
+        });
+      }
+
+      if (result.status === 'NOT_APPROVED') {
+        return res.status(403).json({ 
+          error: 'บัญชีของคุณยังไม่ได้รับการอนุมัติการใช้งาน',
+          registerstatus: result.registerstatus 
+        });
+      }
+
+      return res.status(200).json(result.user);
     } catch (error) {
       console.error('Login error:', error);
       return res.status(500).json({ error: 'Internal server error' });
@@ -223,9 +245,26 @@ class AuthController {
         trainingCert4: trainingCert4Path
       });
 
-      // Prepare database records
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
+      // Format driverskills if available
+      let skills = [];
+      if (Array.isArray(driverSkills)) {
+        skills = driverSkills;
+      } else if (typeof driverSkills === 'string' && driverSkills.trim()) {
+        try {
+          skills = JSON.parse(driverSkills);
+        } catch (_) {
+          skills = [driverSkills.trim()];
+        }
+      }
+
+      // Map string names or numeric IDs to car_type_id (1: EV, 2: Manual, 3: Auto)
+      let numericSkills = skills.map(s => {
+        const str = String(s).toLowerCase();
+        if (str.includes('ev') || str.includes('electric') || str.includes('ไฟฟ้า') || str === '1') return 1;
+        if (str.includes('manual') || str.includes('ธรรมดา') || str.includes('กระปุก') || str === '2') return 2;
+        if (str.includes('auto') || str.includes('ออโต้') || str === '3') return 3;
+        return parseInt(s, 10);
+      }).filter(id => !isNaN(id));
 
       const finalDriverData = {
         username: finalUsername,
@@ -242,7 +281,8 @@ class AuthController {
         regisimagepath: regisImagePathJson,
         regisdate: new Date().toISOString(),
         latitude: 0.0, // default coordinates
-        longitude: 0.0
+        longitude: 0.0,
+        driverskills: numericSkills
       };
 
       const finalCarData = {

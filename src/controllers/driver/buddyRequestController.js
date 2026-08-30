@@ -55,6 +55,17 @@ class BuddyRequestController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  static async getRecent(req, res) {
+    try {
+      const { userId } = req.params;
+      const buddies = await BuddyRequestModel.getRecentBuddies(userId);
+      res.status(200).json(buddies);
+    } catch (error) {
+      console.error("Error fetching recent buddies:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
 }
 
 module.exports = BuddyRequestController;

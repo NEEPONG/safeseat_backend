@@ -3,13 +3,42 @@ const supabase = require('./dbClient');
 class UserReportModel {
   // สร้างรายงานข้อร้องเรียนเกี่ยวกับลูกค้า
   static async createReport(reportData) {
+    // 1. ตรวจสอบและหาค่า userreportid สูงสุดที่มีอยู่ เพื่อป้องกันปัญหา ID Sequence ชน
+    let payload = { ...reportData };
+    try {
+      const { data: latest } = await supabase
+        .from('userreport')
+        .select('userreportid')
+        .order('userreportid', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latest && latest.userreportid) {
+        payload.userreportid = latest.userreportid + 1;
+      } else {
+        payload.userreportid = 1;
+      }
+    } catch (err) {
+      console.warn("Could not determine max userreportid, falling back to default insert:", err);
+    }
+
     const { data, error } = await supabase
       .from('userreport')
-      .insert([reportData])
+      .insert([payload])
       .select()
       .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+      // Fallback: ถ้าเกิดข้อผิดพลาด ให้ลอง insert แบบปกติ (ให้ sequence จัดการ)
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('userreport')
+        .insert([reportData])
+        .select()
+        .maybeSingle();
+
+      if (fallbackError) throw error;
+      return fallbackData;
+    }
     return data;
   }
 
