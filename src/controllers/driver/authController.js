@@ -1,17 +1,26 @@
 const AuthModel = require('../../models/driver/authModel');
 const { uploadToSupabase, getRelativePath, formatDriverDocs, compressPath } = require('../../utils/supabaseStorage');
+const { getThaiCurrentISOString } = require('../../utils/thaiDate');
 const bcrypt = require('bcrypt');
+const { generateToken } = require('../../middlewares/authMiddleware');
 
 class AuthController {
   static async login(req, res) {
     try {
       const { username, password, latitude, longitude } = req.body;
       const user = await AuthModel.login(username, password, latitude, longitude);
-      
+
       if (!user) {
-        return res.status(401).json({ error: 'Invalid username or password' });
+        return res.status(401).json({ success: false, error: 'ไม่พบข้อมูลผู้ใช้งานในระบบ หรือเบอร์โทรศัพท์/รหัสผ่านไม่ถูกต้อง' });
       }
-      return res.status(200).json(user);
+
+      const token = generateToken({
+        id: user.driverid || user.id,
+        username: user.username || user.phoneno,
+        role: 'driver'
+      });
+
+      return res.status(200).json({ ...user, token });
     } catch (error) {
       console.error('Login error:', error);
       return res.status(500).json({ error: 'Internal server error' });
@@ -102,8 +111,8 @@ class AuthController {
       if (!email || email.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกอีเมล (email)' });
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return res.status(400).json({ error: 'อีเมลไม่ถูกต้องตามรูปแบบมาตรฐาน' });
+      if (!/^[a-z0-9_.]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) {
+        return res.status(400).json({ error: 'อีเมลต้องเป็นรูปแบบมาตรฐานสากลเท่านั้น' });
       }
 
       if (!gender) {
@@ -120,50 +129,49 @@ class AuthController {
       if (!phoneNo || phoneNo.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกหมายเลขโทรศัพท์มือถือ (phoneNo)' });
       }
-      if (!/^0[0-9]{9}$/.test(phoneNo)) {
-        return res.status(400).json({ error: 'หมายเลขโทรศัพท์มือถือต้องเป็นตัวเลข 10 หลัก ขึ้นต้นด้วย 0' });
+      if (!/^0[689][0-9]{8}$/.test(phoneNo)) {
+        return res.status(400).json({ error: 'หมายเลขโทรศัพท์มือถือต้องเป็นตัวเลข 10 หลัก ขึ้นต้นด้วย 06, 08 หรือ 09 เท่านั้น' });
       }
 
       if (!password || password.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกรหัสผ่าน (password)' });
       }
-      if (!/^[a-zA-Z0-9!#_.]{6,50}$/.test(password)) {
-        return res.status(400).json({ error: 'รหัสผ่านต้องเป็นภาษาอังกฤษ ตัวเลข และอักขระพิเศษ [!#_.] เท่านั้น ความยาว 6 - 50 ตัวอักษร และไม่มีช่องว่าง' });
+      if (!/^(?=.*[!#_.])[a-zA-Z0-9!#_.]{8,50}$/.test(password)) {
+        return res.status(400).json({ error: 'รหัสผ่านต้องเป็นภาษาอังกฤษ ตัวเลข และรวมอักขระพิเศษ [!#_.] เท่านั้น ความยาว 8 - 50 ตัวอักษร และไม่มีช่องว่าง' });
       }
 
-      if (!driverSkills || 
-          (Array.isArray(driverSkills) && driverSkills.length === 0) || 
-          (typeof driverSkills === 'string' && driverSkills.trim() === '')) {
+      if (!driverSkills ||
+        (Array.isArray(driverSkills) && driverSkills.length === 0) ||
+        (typeof driverSkills === 'string' && driverSkills.trim() === '')) {
         return res.status(400).json({ error: 'กรุณาเลือกความสามารถในการขับรถยนต์ (driverSkills) อย่างน้อย 1 ประเภท' });
       }
 
       if (!carBrand || carBrand.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกยี่ห้อยานพาหนะ (carBrand)' });
       }
-      if (!/^[a-zA-Z\s-]{2,50}$/.test(carBrand)) {
-        return res.status(400).json({ error: 'ยี่ห้อยานพาหนะ (carBrand) ต้องเป็นตัวอักษรอังกฤษ เครื่องหมายขีด (-) หรือช่องว่าง ความยาว 2 - 50 ตัวอักษร' });
+      if (!/^[ก-๙a-zA-Z0-9\s.-]{2,50}$/.test(carBrand)) {
+        return res.status(400).json({ error: 'ยี่ห้อยานพาหนะ (carBrand) ต้องเป็นภาษาไทย ภาษาอังกฤษ ตัวเลข เครื่องหมายขีด (-) จุด หรือช่องว่าง ความยาว 2 - 50 ตัวอักษร' });
       }
 
       if (!carModel || carModel.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกรุ่นยานพาหนะ (carModel)' });
       }
-      if (!/^[a-zA-Z0-9\s-]{1,50}$/.test(carModel)) {
-        return res.status(400).json({ error: 'รุ่นยานพาหนะ (carModel) ต้องเป็นภาษาอังกฤษ ตัวเลข เครื่องหมายขีด (-) หรือช่องว่าง ความยาว 1 - 50 ตัวอักษร' });
+      if (!/^[ก-๙a-zA-Z0-9\s.-]{1,50}$/.test(carModel)) {
+        return res.status(400).json({ error: 'รุ่นยานพาหนะ (carModel) ต้องเป็นภาษาไทย ภาษาอังกฤษ ตัวเลข เครื่องหมายขีด (-) จุด หรือช่องว่าง ความยาว 1 - 50 ตัวอักษร' });
       }
 
       if (!carColor || carColor.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกสียานพาหนะ (carColor)' });
       }
-      if (!/^[ก-๙\s-]{2,50}$/.test(carColor)) {
-        return res.status(400).json({ error: 'สียานพาหนะ (carColor) ต้องเป็นภาษาไทย เครื่องหมายขีด (-) หรือช่องว่าง ความยาว 2 - 50 ตัวอักษร' });
+      if (!/^[ก-๙a-zA-Z0-9\s.-]{1,50}$/.test(carColor.trim())) {
+        return res.status(400).json({ error: 'สียานพาหนะ (carColor) ต้องเป็นภาษาไทย ภาษาอังกฤษ ตัวเลข เครื่องหมายขีด (-) จุด หรือช่องว่าง' });
       }
 
       if (!carPlate || carPlate.trim() === '') {
         return res.status(400).json({ error: 'กรุณากรอกทะเบียนยานพาหนะ (carPlate)' });
       }
-      // Allow optional space or dash - for plates like 1กข 1234 or กข-1234
-      if (!/^[ก-๙0-9\s-]{2,20}$/.test(carPlate)) {
-        return res.status(400).json({ error: 'ทะเบียนยานพาหนะ (carPlate) ต้องเป็นภาษาไทย ตัวเลข เครื่องหมายขีด (-) หรือช่องว่าง ความยาว 2 - 20 ตัวอักษร' });
+      if (!/^[ก-๙a-zA-Z0-9\s.-]{1,20}$/.test(carPlate.trim())) {
+        return res.status(400).json({ error: 'ทะเบียนยานพาหนะ (carPlate) ต้องเป็นภาษาไทย ภาษาอังกฤษ ตัวเลข เครื่องหมายขีด (-) จุด หรือช่องว่าง ความยาว 1 - 20 ตัวอักษร' });
       }
 
       // If username is not provided, use phoneNo as username
@@ -240,7 +248,7 @@ class AuthController {
         walletbalance: 0.0,
         registerstatus: 'รอดำเนินการ', // default state
         regisimagepath: regisImagePathJson,
-        regisdate: new Date().toISOString(),
+        regisdate: getThaiCurrentISOString(),
         latitude: 0.0, // default coordinates
         longitude: 0.0
       };
@@ -253,8 +261,33 @@ class AuthController {
         carimagepath: getRelativePath(carImagePath) // Also save relative path for car image path
       };
 
+      // Map driver skills (1: EV/Electric, 2: Manual, 3: Auto/Autometric)
+      let rawSkills = req.body.driverSkills || req.body['driverSkills[]'] || req.body.skills || [];
+      if (typeof rawSkills === 'string') {
+        rawSkills = [rawSkills];
+      }
+      const skillMap = {
+        'electric': 1,
+        'ev': 1,
+        '1': 1,
+        'manual': 2,
+        '2': 2,
+        'autometric': 3,
+        'auto': 3,
+        'automatic': 3,
+        '3': 3,
+      };
+      let skillIds = Array.from(new Set(
+        rawSkills
+          .map(s => skillMap[String(s).trim().toLowerCase()])
+          .filter(Boolean)
+      ));
+      if (skillIds.length === 0) {
+        skillIds = [3]; // Default to Auto
+      }
+
       // Perform transaction-like insert via Model
-      const result = await AuthModel.register(finalDriverData, finalCarData);
+      const result = await AuthModel.register(finalDriverData, finalCarData, skillIds);
 
       // Convert relative paths in returned data to full URLs for response consistency
       if (result && result.driver) {
@@ -278,12 +311,24 @@ class AuthController {
 
     } catch (error) {
       console.error('Registration error:', error);
-      return res.status(500).json({ error: error.message || 'Internal server error' });
+      let errMsg = error.message || 'เกิดข้อผิดพลาดในการลงทะเบียน';
+      if (errMsg.includes('driver_idcard_key') || errMsg.includes('idcard') || errMsg.includes('idCard')) {
+        errMsg = 'หมายเลขบัตรประชาชนนี้สมัครสมาชิกในระบบเรียบร้อยแล้ว';
+      } else if (errMsg.includes('driver_email_key') || errMsg.includes('email')) {
+        errMsg = 'อีเมลนี้มีในระบบแล้ว กรุณาใช้อีเมลอื่น';
+      } else if (errMsg.includes('driver_phoneno_key') || errMsg.includes('driver_phone_no_key')) {
+        errMsg = 'หมายเลขโทรศัพท์นี้มีในระบบแล้ว กรุณาใช้หมายเลขอื่น';
+      } else if (errMsg.includes('carplate') || errMsg.includes('car_carplate_key')) {
+        errMsg = 'ทะเบียนยานพาหนะนี้ถูกใช้งานแล้วในระบบ กรุณาใช้ทะเบียนอื่น';
+      } else if (errMsg.includes('username')) {
+        errMsg = 'ชื่อผู้ใช้นี้ถูกใช้งานแล้ว';
+      }
+      return res.status(400).json({ success: false, error: errMsg, message: errMsg });
     }
   }
   static async checkCredentials(req, res) {
     try {
-      const { email, phoneNo, idCard, username, carPlate } = req.body;
+      const { email, phoneNo, idCard, username, carPlate, bankAccountNo } = req.body;
       if (email) {
         const emailDup = await AuthModel.checkDuplicateEmail(email);
         if (emailDup) {
@@ -300,6 +345,12 @@ class AuthController {
         const idCardDup = await AuthModel.checkDuplicateIdCard(idCard);
         if (idCardDup) {
           return res.status(400).json({ error: 'หมายเลขบัตรประชาชนนี้สมัครสมาชิกแล้ว' });
+        }
+      }
+      if (bankAccountNo) {
+        const bankDup = await AuthModel.checkDuplicateBankAccount(bankAccountNo);
+        if (bankDup) {
+          return res.status(400).json({ error: 'เลขบัญชีธนาคารนี้มีในระบบแล้ว กรุณาใช้บัญชีอื่น' });
         }
       }
       if (username) {
@@ -323,7 +374,7 @@ class AuthController {
   static async getStatus(req, res) {
     try {
       const { username } = req.params;
-      
+
       if (!username) {
         return res.status(400).json({ error: 'Username is required' });
       }
@@ -339,7 +390,7 @@ class AuthController {
       });
     } catch (error) {
       console.error('Get status error:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: error.message || 'Internal server error', details: error });
     }
   }
 }

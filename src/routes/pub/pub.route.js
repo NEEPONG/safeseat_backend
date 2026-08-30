@@ -7,7 +7,7 @@
 //   POST /api/pub/register            → รับการสมัครสมาชิก
 //   POST /api/pub/check-email         → ตรวจสอบอีเมลซ้ำ
 //   GET  /api/pub/status/:username    → ดูสถานะการลงทะเบียน
-//   GET  /api/pub/profile/:username   → ดูข้อมูล profile ของร้าน
+//   GET  /api/pub/profile/:username   → ดูข้อมูล profile ของสถานบันเทิง
 //
 // Pattern: Route → Controller → Service → Model → Database
 // ไฟล์นี้เป็นแค่ "ตัวเชื่อม" ระหว่าง URL กับ Controller function
@@ -23,7 +23,10 @@ const upload = multer({ dest: 'uploads/' })
 // Import controller functions (เป็น async functions ที่จัดการ req/res)
 const { login, register, checkEmail, getStatus, getProfile } = require('../../controllers/pub/pub.controller')
 
-const { requestDriver, getServiceInfo, getServiceRequestById, simulateStep } = require('../../controllers/pub/service.controller')
+const { requestDriver, getServiceInfo, getServiceRequestById, simulateStep, cancelServiceRequest } = require('../../controllers/pub/service.controller')
+
+const { validateServiceRequest } = require('../../middlewares/validate')
+const { authenticateToken } = require('../../middlewares/authMiddleware')
 
 // ── Endpoints ─────────────────────────────────────────────────
 
@@ -56,22 +59,22 @@ router.get('/status/:username', getStatus)
 // Params: username
 // Response: { success: true, data: pubProfileObject } (ไม่รวม password)
 // ใช้แสดงข้อมูล pub ทั้งหมดสำหรับ dashboard หรือ profile page
-router.get('/profile/:username', getProfile)
+router.get('/profile/:username', authenticateToken, getProfile)
 
 // POST /api/pub/request-driver
 // Body: { pubUsername, custName, phoneNo, phoneEmer, carType, dropoffLatitude, dropoffLongitude, isLadyMode, note, paymentMethod }
-router.post('/request-driver', requestDriver)
+router.post('/request-driver', authenticateToken, validateServiceRequest, requestDriver)
 
 // GET /api/pub/service-info/:username
 // Params: username
-router.get('/service-info/:username', getServiceInfo)
+router.get('/service-info/:username', authenticateToken, getServiceInfo)
 
 // GET /api/pub/service-request/:requestId
 // Params: requestId — ดึง request เดียวสำหรับ polling สถานะ (หน้า Waiting)
 router.get('/service-request/:requestId', getServiceRequestById)
 
-// POST /api/pub/service-request/:requestId/simulate-step
-// Body: { step } — จำลองขั้นตอนการเดินทาง
-router.post('/service-request/:requestId/simulate-step', simulateStep)
+// DELETE /api/pub/service-request/:requestId
+// Params: requestId — ยกเลิกและลบรายการเรียกรถออกจากระบบแบบสมบูรณ์
+router.delete('/service-request/:requestId', cancelServiceRequest)
 
 module.exports = router

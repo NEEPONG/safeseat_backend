@@ -1,4 +1,5 @@
 const supabase = require('./dbClient');
+const { getThaiCurrentISOString } = require('../../utils/thaiDate');
 
 class DriverReportModel {
   // Helper to enrich reports with leader and follower driver profiles from buddyteam
@@ -145,65 +146,34 @@ class DriverReportModel {
     });
   }
 
-  // ดึงรายงานที่ผู้ใช้ (ลูกค้า) เป็นผู้แจ้ง โดยดูจาก requestbyuser.user_id
-  static async getReportsByUser(userId) {
-    if (!userId) return [];
-
-    try {
-      const { data, error } = await supabase
-        .from('driverreport')
-        .select('*, requestbyuser!inner(*)')
-        .eq('requestbyuser.user_id', userId)
-        .order('reportdate', { ascending: false });
-
-      if (error) throw error;
-      return await this.enrichReportsWithDrivers(data || []);
-    } catch (e) {
-      console.warn("Join filter in getReportsByUser failed, filtering in JS:", e.message);
-      const allReports = await this.getAllReports();
-      return allReports.filter(report => {
-        const req = report.requestbyuser;
-        return req && req.user_id === userId;
-      });
-    }
-  }
-
-  // ดึงรายงานตาม request_id ของทริป
-  static async getReportByRequestId(requestId) {
+  // ตรวจสอบว่ามีรายงานของ request_id นี้แล้วหรือไม่
+  static async findExistingReportByRequestId(requestId) {
     if (!requestId) return null;
+    const reqIdNum = parseInt(requestId, 10);
+    if (isNaN(reqIdNum)) return null;
 
-    try {
-      const { data, error } = await supabase
-        .from('driverreport')
-        .select('*, requestbyuser(*)')
-        .eq('request_id', requestId)
-        .maybeSingle();
+    const { data, error } = await supabase
+      .from('driverreport')
+      .select('*')
+      .or(`request_id.eq.${reqIdNum},reportindex.eq.${reqIdNum}`)
+      .limit(1)
+      .maybeSingle();
 
-      if (error) {
-        console.warn("Join with requestbyuser failed in getReportByRequestId:", error.message);
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('driverreport')
-          .select('*')
-          .eq('request_id', requestId)
-          .maybeSingle();
-        if (fallbackError) throw fallbackError;
-        return fallbackData;
-      }
-
-      if (!data) return null;
-      const enriched = await this.enrichReportsWithDrivers([data]);
-      return enriched[0] || data;
-    } catch (e) {
-      console.error("Error in getReportByRequestId:", e);
-      return null;
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error checking existing driver report:', error);
     }
+    return data;
   }
 
   // สร้างรายงานใหม่
   static async createReport(reportData) {
+    const payload = {
+      ...reportData,
+      reportdate: reportData.reportdate || getThaiCurrentISOString()
+    };
     const { data, error } = await supabase
       .from('driverreport')
-      .insert([reportData])
+      .insert([payload])
       .select()
       .maybeSingle();
 

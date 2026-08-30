@@ -67,6 +67,20 @@ class UserModel {
         data.reviews = [];
       }
 
+      // ดึงทักษะประเภทรถยนต์ที่คนขับสามารถขับได้
+      try {
+        const { data: skillsData } = await supabase
+          .from('driverskill')
+          .select('car_type_id, cartype:car_type_id(cartypename)')
+          .eq('driver_id', data.username);
+        data.skills = skillsData || [];
+        data.skill_ids = (skillsData || []).map(s => s.car_type_id);
+      } catch (err) {
+        console.error("Error fetching driver skills:", err);
+        data.skills = [];
+        data.skill_ids = [];
+      }
+
       // ดึงประวัติทีมบัดดี้เพื่อคำนวณอัตราการรับงานและยกเลิกงานแบบกึ่งไดนามิก
       let completedJobsCount = 0;
       try {
@@ -111,9 +125,9 @@ class UserModel {
     return formatCarImagePath(formatDriverDocs(data));
   }
 
-  // อัปเดตข้อมูลโปรไฟล์ผู้ใช้งาน
+  // อัปเดตข้อมูลโปรไฟล์ผู้ใช้งาน (รวมถึงทักษะประเภทรถยนต์ที่สามารถขับได้)
   static async updateProfile(username, profileData) {
-    const { drivercar, ...driverFields } = profileData;
+    const { drivercar, skills, skill_ids, driverSkills, ...driverFields } = profileData;
 
     if (drivercar) {
       // 1. ค้นหาไอดีรถ (driver_car ID) ของคนขับคนนี้
@@ -136,7 +150,25 @@ class UserModel {
       }
     }
 
-    // 3. อัปเดตข้อมูลในตารางคนขับ (driver)
+    // 3. อัปเดตทักษะประเภทรถยนต์ที่ขับได้ (ถ้ามีการส่งมา)
+    const rawSkills = skill_ids || skills || driverSkills;
+    if (rawSkills && Array.isArray(rawSkills)) {
+      const skillMap = {
+        'electric': 1, 'ev': 1, '1': 1, 1: 1,
+        'manual': 2, '2': 2, 2: 2,
+        'autometric': 3, 'auto': 3, 'automatic': 3, '3': 3, 3: 3
+      };
+      const validIds = Array.from(new Set(
+        rawSkills.map(s => typeof s === 'object' && s.car_type_id ? s.car_type_id : skillMap[String(s).trim().toLowerCase()]).filter(Boolean)
+      ));
+      if (validIds.length > 0) {
+        await supabase.from('driverskill').delete().eq('driver_id', username);
+        const rows = validIds.map(typeId => ({ driver_id: username, car_type_id: typeId }));
+        await supabase.from('driverskill').insert(rows);
+      }
+    }
+
+    // 4. อัปเดตข้อมูลในตารางคนขับ (driver)
     const { data: updatedDriver, error: driverError } = await supabase
       .from('driver')
       .update(driverFields)
