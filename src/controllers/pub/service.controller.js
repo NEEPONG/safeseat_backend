@@ -3,9 +3,23 @@
 // ═══════════════════════════════════════════════════════════════
 
 const pubModel = require('../../models/pub/pub.model')
-const { createServiceRequest, findServiceRequestsByPub, findServiceRequestById } = require('../../models/pub/service.model')
+const { createServiceRequest, findServiceRequestsByPub, findServiceRequestById, deleteServiceRequest } = require('../../models/pub/service.model')
 const { supabase } = require('../../config/supabase')
 const DispatcherService = require('../../services/dispatcherService')
+
+function getLocalThaiISOString(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const thaiDate = new Date(d.getTime() + (7 * 60 + d.getTimezoneOffset()) * 60 * 1000);
+  const year = thaiDate.getFullYear();
+  const month = pad(thaiDate.getMonth() + 1);
+  const day = pad(thaiDate.getDate());
+  const hours = pad(thaiDate.getHours());
+  const minutes = pad(thaiDate.getMinutes());
+  const seconds = pad(thaiDate.getSeconds());
+  const ms = pad3(thaiDate.getMilliseconds());
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}`;
+}
 
 /**
  * รับข้อมูลจาก Pub เพื่อเรียกรถให้ลูกค้า
@@ -31,9 +45,10 @@ const requestDriver = async (req, res) => {
 
     const carModelVal = (carModel || carmodel || '').trim()
     const licensePlateVal = (licensePlate || carplate || '').trim()
+    const paymentMethodVal = paymentMethod !== undefined && !isNaN(parseInt(paymentMethod, 10)) ? parseInt(paymentMethod, 10) : 2
 
     // 1. ตรวจสอบข้อมูลบังคับ
-    if (!pubUsername || !custName || !phoneNo || !phoneEmer || !carType || !dropoffLatitude || !dropoffLongitude || paymentMethod === undefined) {
+    if (!pubUsername || !custName || !phoneNo || !phoneEmer || !carType || !dropoffLatitude || !dropoffLongitude) {
       return res.status(400).json({ success: false, message: 'กรุณากรอกข้อมูลให้ครบถ้วน' })
     }
 
@@ -109,9 +124,9 @@ const requestDriver = async (req, res) => {
       carplate: licensePlateVal,
       note: formattedNote,
       isladymode: isLadyMode || false,
-      paymentmethod: parseInt(paymentMethod),
+      paymentmethod: paymentMethodVal,
       requeststatus: 'รอคนขับ',
-      reqdatetime: new Date().toISOString(),
+      reqdatetime: req.body.reqdatetime || req.body.reqDateTime || getLocalThaiISOString(),
       requiredcartype: carTypeId,
       pickuplatitude: parseFloat(pickupLatitude),
       pickuplongitude: parseFloat(pickupLongitude),
@@ -203,68 +218,114 @@ const getServiceInfo = async (req, res) => {
 const getServiceRequestById = async (req, res) => {
   try {
     const { requestId } = req.params
+    const { type } = req.query // 'pub' | 'user' | undefined
     if (!requestId) {
       return res.status(400).json({ success: false, message: 'กรุณาระบุ requestId' })
     }
 
-    let data = null
-    try {
-      data = await findServiceRequestById(requestId)
-      if (data) {
-        data.requestType = 'pub'
-      }
-    } catch (e) {
-      // ไม่พบในตาราง requestbypub, ลองหาในตาราง requestbyuser แทน
+    const cleanId = parseInt(requestId, 10)
+    if (isNaN(cleanId)) {
+      return res.status(400).json({ success: false, message: 'requestId ต้องเป็นตัวเลข' })
     }
 
-    if (!data) {
-      const { data: userReq, error: userReqErr } = await supabase
-        .from('requestbyuser')
-        .select('*')
-        .eq('requestid', parseInt(requestId, 10))
-        .maybeSingle()
+    let pubReq = null
+    let userReq = null
 
-      if (userReqErr) {
-        console.error('Error fetching requestbyuser:', userReqErr)
-      }
+    // 1. ค้นหาในฝั่ง pub
+    if (!type || type === 'pub') {
+      try {
+        pubReq = await findServiceRequestById(cleanId)
+      } catch (_) {}
+    }
 
-      if (userReq) {
-        // ดึงชื่อโปรไฟล์ของลูกค้าจากตาราง User เพื่อนำมาจำลองเป็น custname
-        let custName = 'ลูกค้า SafeSeat'
+    // 2. ค้นหาในฝั่ง user
+    if (!type || type === 'user') {
+      try {
+        const { data: uData } = await supabase
+          .from('requestbyuser')
+          .select('*')
+          .eq('requestid', cleanId)
+          .maybeSingle()
+        userReq = uData
+      } catch (_) {}
+    }
+
+    // 3. หากพบทั้ง 2 ฝั่ง และไม่ได้ระบุ type ให้ส่ง matches เพื่อให้ผู้ใช้เลือกใน Popup Modal
+    if (!type && pubReq && userReq) {
+      let userName = 'ผู้ใช้บริการทั่วไป'
+      if (userReq.user_id) {
         try {
-          const { data: userProfile } = await supabase
+          const { data: uProfile } = await supabase
             .from('User')
             .select('name')
             .eq('phoneno', userReq.user_id)
             .maybeSingle()
-          if (userProfile && userProfile.name) {
-            custName = userProfile.name
-          }
-        } catch (errProfile) {
-          console.warn("Could not load user name for requestbyuser fallback", errProfile)
-        }
+          if (uProfile && uProfile.name) userName = uProfile.name
+        } catch (_) {}
+      }
 
-        // แปลงฟิลด์ของ requestbyuser ให้ตรงกับโครงสร้างที่หน้าเว็บคาดหวังจาก requestbypub
-        data = {
-          requestid: userReq.requestid,
-          custname: custName,
-          phoneno: userReq.user_id,
-          phoneemer: '',
-          note: userReq.note || '',
-          isladymode: userReq.isladymode,
-          paymentmethod: userReq.paymentmethod,
-          requeststatus: userReq.requeststatus,
-          reqdatetime: userReq.created_at || new Date().toISOString(),
-          requiredcartype: 3, // ค่า Default เป็น Auto
-          pickuplatitude: userReq.pickuplatitude,
-          pickuplongitude: userReq.pickuplongitude,
-          dropofflatitude: userReq.dropofflatitude,
-          dropofflongitude: userReq.dropofflongitude,
-          requestfee: userReq.requestfee,
-          reqdistance: userReq.reqdistance,
-          buddy_team_id: userReq.buddy_team_id,
-          requestType: 'user'
+      return res.status(200).json({
+        success: true,
+        isMultiple: true,
+        matches: [
+          {
+            requestType: 'user',
+            requestid: cleanId,
+            custname: userName,
+            phoneno: userReq.user_id,
+            reqdatetime: userReq.reqdatetime || userReq.created_at,
+            requeststatus: userReq.requeststatus
+          },
+          {
+            requestType: 'pub',
+            requestid: cleanId,
+            custname: pubReq.custname,
+            phoneno: pubReq.phoneno,
+            reqdatetime: pubReq.reqdatetime,
+            requeststatus: pubReq.requeststatus
+          }
+        ]
+      })
+    }
+
+    // 4. หากมีข้อมูลเดียว หรือมีการระบุ type ชัดเจน
+    let data = null
+    if (pubReq && (!type || type === 'pub')) {
+      data = { ...pubReq, requestType: 'pub' }
+    } else if (userReq && (!type || type === 'user')) {
+      let custName = 'ลูกค้า SafeSeat'
+      try {
+        const { data: userProfile } = await supabase
+          .from('User')
+          .select('name')
+          .eq('phoneno', userReq.user_id)
+          .maybeSingle()
+        if (userProfile && userProfile.name) {
+          custName = userProfile.name
         }
+      } catch (errProfile) {
+        console.warn("Could not load user name for requestbyuser fallback", errProfile)
+      }
+
+      data = {
+        requestid: userReq.requestid,
+        custname: custName,
+        phoneno: userReq.user_id,
+        phoneemer: '',
+        note: userReq.note || '',
+        isladymode: userReq.isladymode,
+        paymentmethod: userReq.paymentmethod,
+        requeststatus: userReq.requeststatus,
+        reqdatetime: userReq.reqdatetime || userReq.created_at || new Date().toISOString(),
+        requiredcartype: 3,
+        pickuplatitude: userReq.pickuplatitude,
+        pickuplongitude: userReq.pickuplongitude,
+        dropofflatitude: userReq.dropofflatitude,
+        dropofflongitude: userReq.dropofflongitude,
+        requestfee: userReq.requestfee,
+        reqdistance: userReq.reqdistance,
+        buddy_team_id: userReq.buddy_team_id,
+        requestType: 'user'
       }
     }
 
@@ -439,9 +500,29 @@ const simulateStep = async (req, res) => {
   }
 };
 
+const cancelServiceRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    if (!requestId) {
+      return res.status(400).json({ success: false, message: 'กรุณาระบุ requestId' });
+    }
+    const cleanId = String(requestId).replace(/^[A-Za-z]+/, '').trim();
+    const deleted = await deleteServiceRequest(cleanId);
+    return res.status(200).json({
+      success: true,
+      message: 'ยกเลิกรายการเรียกรถและลบข้อมูลเรียบร้อยแล้ว',
+      data: deleted
+    });
+  } catch (error) {
+    console.error('Error in cancelServiceRequest:', error);
+    return res.status(500).json({ success: false, message: 'ไม่สามารถลบข้อมูลได้: ' + error.message });
+  }
+};
+
 module.exports = {
   requestDriver,
   getServiceInfo,
   getServiceRequestById,
-  simulateStep
+  simulateStep,
+  cancelServiceRequest
 }

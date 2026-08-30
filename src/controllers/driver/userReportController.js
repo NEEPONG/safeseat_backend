@@ -1,5 +1,26 @@
 const UserReportModel = require('../../models/driver/userReportModel');
 
+function toThaiLocalISOString(inputDate) {
+  let d = new Date();
+  if (inputDate) {
+    const parsed = new Date(inputDate);
+    if (!isNaN(parsed.getTime())) {
+      d = parsed;
+    }
+  }
+  const pad = (n) => String(n).padStart(2, '0');
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const thaiDate = new Date(d.getTime() + (7 * 60 + d.getTimezoneOffset()) * 60 * 1000);
+  const year = thaiDate.getFullYear();
+  const month = pad(thaiDate.getMonth() + 1);
+  const day = pad(thaiDate.getDate());
+  const hours = pad(thaiDate.getHours());
+  const minutes = pad(thaiDate.getMinutes());
+  const seconds = pad(thaiDate.getSeconds());
+  const ms = pad3(thaiDate.getMilliseconds());
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}`;
+}
+
 class UserReportController {
   // POST /api/user-reports
   static async createReport(req, res) {
@@ -27,6 +48,7 @@ class UserReportController {
         reportdetail: reportdetail || '',
         request_id: parseInt(request_id),
         reportstatus: 'กำลังดำเนินการ',
+        reportdate: toThaiLocalISOString(req.body.reportdate),
       };
 
       if (reportimagepath) {

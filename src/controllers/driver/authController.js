@@ -2,6 +2,20 @@ const AuthModel = require('../../models/driver/authModel');
 const { uploadToSupabase, getRelativePath, formatDriverDocs, compressPath } = require('../../utils/supabaseStorage');
 const bcrypt = require('bcrypt');
 
+function getLocalThaiISOString(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const thaiDate = new Date(d.getTime() + (7 * 60 + d.getTimezoneOffset()) * 60 * 1000);
+  const year = thaiDate.getFullYear();
+  const month = pad(thaiDate.getMonth() + 1);
+  const day = pad(thaiDate.getDate());
+  const hours = pad(thaiDate.getHours());
+  const minutes = pad(thaiDate.getMinutes());
+  const seconds = pad(thaiDate.getSeconds());
+  const ms = pad3(thaiDate.getMilliseconds());
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}`;
+}
+
 class AuthController {
   static async login(req, res) {
     try {
@@ -10,27 +24,6 @@ class AuthController {
       
       if (!result) {
         return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
-      }
-
-      if (result.status === 'PENDING') {
-        return res.status(403).json({ 
-          error: 'บัญชีของคุณอยู่ระหว่างการรอตรวจสอบและอนุมัติจากผู้ดูแลระบบ',
-          registerstatus: result.registerstatus 
-        });
-      }
-
-      if (result.status === 'REJECTED') {
-        return res.status(403).json({ 
-          error: 'บัญชีของคุณไม่ผ่านการอนุมัติ กรุณาติดต่อผู้ดูแลระบบหรือสมัครใหม่',
-          registerstatus: result.registerstatus 
-        });
-      }
-
-      if (result.status === 'NOT_APPROVED') {
-        return res.status(403).json({ 
-          error: 'บัญชีของคุณยังไม่ได้รับการอนุมัติการใช้งาน',
-          registerstatus: result.registerstatus 
-        });
       }
 
       return res.status(200).json(result.user);
@@ -266,6 +259,10 @@ class AuthController {
         return parseInt(s, 10);
       }).filter(id => !isNaN(id));
 
+      // Hash password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
       const finalDriverData = {
         username: finalUsername,
         password: hashedPassword, // Hash password before saving
@@ -279,7 +276,7 @@ class AuthController {
         walletbalance: 0.0,
         registerstatus: 'รอดำเนินการ', // default state
         regisimagepath: regisImagePathJson,
-        regisdate: new Date().toISOString(),
+        regisdate: getLocalThaiISOString(),
         latitude: 0.0, // default coordinates
         longitude: 0.0,
         driverskills: numericSkills
@@ -323,7 +320,7 @@ class AuthController {
   }
   static async checkCredentials(req, res) {
     try {
-      const { email, phoneNo, idCard, username, carPlate } = req.body;
+      const { email, phoneNo, idCard, username, carPlate, bankAccountNo } = req.body;
       if (email) {
         const emailDup = await AuthModel.checkDuplicateEmail(email);
         if (emailDup) {
@@ -340,6 +337,12 @@ class AuthController {
         const idCardDup = await AuthModel.checkDuplicateIdCard(idCard);
         if (idCardDup) {
           return res.status(400).json({ error: 'หมายเลขบัตรประชาชนนี้สมัครสมาชิกแล้ว' });
+        }
+      }
+      if (bankAccountNo) {
+        const bankDup = await AuthModel.checkDuplicateBankAccount(bankAccountNo);
+        if (bankDup) {
+          return res.status(400).json({ error: 'เลขที่บัญชีธนาคารนี้มีในระบบแล้ว กรุณาใช้บัญชีอื่น' });
         }
       }
       if (username) {

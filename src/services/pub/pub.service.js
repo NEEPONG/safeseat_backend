@@ -15,6 +15,20 @@
 const PubModel = require('../../models/pub/pub.model')
 const bcrypt = require('bcrypt')
 
+function getLocalThaiISOString(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const thaiDate = new Date(d.getTime() + (7 * 60 + d.getTimezoneOffset()) * 60 * 1000);
+  const year = thaiDate.getFullYear();
+  const month = pad(thaiDate.getMonth() + 1);
+  const day = pad(thaiDate.getDate());
+  const hours = pad(thaiDate.getHours());
+  const minutes = pad(thaiDate.getMinutes());
+  const seconds = pad(thaiDate.getSeconds());
+  const ms = pad3(thaiDate.getMilliseconds());
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}`;
+}
+
 // ── Regex Patterns ────────────────────────────────────────────
 // ตัวแปร regex นิยามนอก function เพื่อ compile ครั้งเดียว (ประหยัด memory)
 
@@ -120,7 +134,7 @@ const registerPub = async (pubData) => {
           pubaddresslng: lng,
           regisimagepath: regisImagePath || existing.regisimagepath,
           regisstatus: 'รอดำเนินการ',
-          regisdate: new Date(),
+          regisdate: getLocalThaiISOString(),
         })
         .eq('username', username)
         .select()
@@ -189,8 +203,8 @@ const registerPub = async (pubData) => {
 
     // กำหนด status เริ่มต้นเป็น 'รอดำเนินการ' (รอ admin อนุมัติ)
     regisstatus: 'รอดำเนินการ',
-    // บันทึกวันที่สมัคร (JavaScript Date object)
-    regisdate:   new Date(),
+    // บันทึกวันที่สมัคร (เวลาไทย Asia/Bangkok)
+    regisdate:   getLocalThaiISOString(),
   })
 }
 
@@ -219,25 +233,43 @@ const loginPub = async (username, password) => {
 }
 
 // ════════════════════════════════════════════════════════════════
-// checkEmail / checkCredentials — ตรวจสอบอีเมล, เบอร์โทร, เลขผู้เสียภาษีซ้ำ
+// checkEmail / checkCredentials — ตรวจสอบอีเมล, เบอร์โทร, เลขผู้เสียภาษี, ชื่อร้าน, เลขบัญชี, username ซ้ำ
 // ════════════════════════════════════════════════════════════════
-const checkEmail = async (email, phone, taxNumber) => {
-  if (email) {
-    const existing = await PubModel.checkDuplicateEmailCrossTable(email)
+const checkEmail = async (email, phone, taxNumber, pubName, bankAccountNo, username) => {
+  if (pubName && String(pubName).trim()) {
+    const existingPub = await PubModel.findByPubName(String(pubName).trim())
+    if (existingPub) {
+      throw new Error('ชื่อสถานประกอบการนี้มีในระบบแล้ว กรุณาใช้ชื่ออื่น')
+    }
+  }
+  if (email && String(email).trim()) {
+    const existing = await PubModel.checkDuplicateEmailCrossTable(String(email).trim())
     if (existing) {
       throw new Error('อีเมลนี้มีในระบบแล้ว กรุณาใช้อีเมลอื่น')
     }
   }
-  if (phone) {
-    const existingPhone = await PubModel.checkDuplicatePhoneCrossTable(phone)
+  if (phone && String(phone).trim()) {
+    const existingPhone = await PubModel.checkDuplicatePhoneCrossTable(String(phone).trim())
     if (existingPhone) {
       throw new Error('หมายเลขโทรศัพท์นี้มีในระบบแล้ว กรุณาใช้หมายเลขอื่น')
     }
   }
-  if (taxNumber) {
-    const existingTax = await PubModel.findByTaxNumber(taxNumber)
+  if (taxNumber && String(taxNumber).trim()) {
+    const existingTax = await PubModel.findByTaxNumber(String(taxNumber).trim())
     if (existingTax) {
       throw new Error('เลขผู้เสียภาษีนี้มีในระบบแล้ว กรุณาตรวจสอบอีกครั้ง')
+    }
+  }
+  if (bankAccountNo && String(bankAccountNo).trim()) {
+    const existingBank = await PubModel.checkDuplicateBankAccountCrossTable(String(bankAccountNo).trim())
+    if (existingBank) {
+      throw new Error('เลขที่บัญชีธนาคารนี้มีในระบบแล้ว กรุณาใช้บัญชีอื่น')
+    }
+  }
+  if (username && String(username).trim()) {
+    const existingUser = await PubModel.checkDuplicateUsernameCrossTable(String(username).trim())
+    if (existingUser) {
+      throw new Error('ชื่อผู้ใช้นี้มีในระบบแล้ว กรุณาใช้ชื่อผู้ใช้อื่น')
     }
   }
   return true

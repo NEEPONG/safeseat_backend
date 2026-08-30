@@ -1,5 +1,26 @@
 const DriverReportModel = require('../../models/driver/driverReportModel');
 
+function toThaiLocalISOString(inputDate) {
+  let d = new Date();
+  if (inputDate) {
+    const parsed = new Date(inputDate);
+    if (!isNaN(parsed.getTime())) {
+      d = parsed;
+    }
+  }
+  const pad = (n) => String(n).padStart(2, '0');
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const thaiDate = new Date(d.getTime() + (7 * 60 + d.getTimezoneOffset()) * 60 * 1000);
+  const year = thaiDate.getFullYear();
+  const month = pad(thaiDate.getMonth() + 1);
+  const day = pad(thaiDate.getDate());
+  const hours = pad(thaiDate.getHours());
+  const minutes = pad(thaiDate.getMinutes());
+  const seconds = pad(thaiDate.getSeconds());
+  const ms = pad3(thaiDate.getMilliseconds());
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}`;
+}
+
 class DriverReportController {
   // GET /api/driver-reports
   static async getReports(req, res) {
@@ -57,7 +78,13 @@ class DriverReportController {
         return res.status(409).json({ error: 'คุณได้ส่งรายงานสำหรับรายการนี้ไปแล้ว ไม่สามารถรายงานซ้ำได้' });
       }
 
-      const newReport = await DriverReportModel.createReport(reportData);
+      const payload = {
+        ...reportData,
+        reportdate: toThaiLocalISOString(reportData.reportdate),
+        reportstatus: reportData.reportstatus || 'รอดำเนินการ'
+      };
+
+      const newReport = await DriverReportModel.createReport(payload);
       return res.status(201).json(newReport);
     } catch (error) {
       console.error("Error creating driver report:", error);
