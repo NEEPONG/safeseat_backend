@@ -2,6 +2,20 @@ const supabase = require('./dbClient');
 const { formatDriverDocs } = require('../../utils/supabaseStorage');
 const bcrypt = require('bcrypt');
 
+function getLocalThaiISOString(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const pad3 = (n) => String(n).padStart(3, '0');
+  const thaiDate = new Date(d.getTime() + (7 * 60 + d.getTimezoneOffset()) * 60 * 1000);
+  const year = thaiDate.getFullYear();
+  const month = pad(thaiDate.getMonth() + 1);
+  const day = pad(thaiDate.getDate());
+  const hours = pad(thaiDate.getHours());
+  const minutes = pad(thaiDate.getMinutes());
+  const seconds = pad(thaiDate.getSeconds());
+  const ms = pad3(thaiDate.getMilliseconds());
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}`;
+}
+
 class AuthModel {
   static async login(username, password, latitude, longitude) {
     let { data, error } = await supabase
@@ -15,18 +29,6 @@ class AuthModel {
 
     const isMatch = await bcrypt.compare(password, data.password);
     if (!isMatch) return null;
-
-    // ตรวจสอบสถานะการอนุมัติการสมัคร (registerstatus)
-    const status = data.registerstatus;
-    if (status === 'รอดำเนินการ' || status === 'pending') {
-      return { status: 'PENDING', registerstatus: status };
-    }
-    if (status === 'ปฏิเสธ' || status === 'rejected') {
-      return { status: 'REJECTED', registerstatus: status };
-    }
-    if (status !== 'อนุมัติแล้ว' && status !== 'approved') {
-      return { status: 'NOT_APPROVED', registerstatus: status };
-    }
 
     // หากเข้าสู่ระบบสำเร็จและมีการส่งพิกัดละติจูด/ลองจิจูดมา ให้ทำการอัปเดตตำแหน่งคนขับ
     if (data && latitude !== undefined && longitude !== undefined) {
@@ -42,7 +44,9 @@ class AuthModel {
       }
     }
 
-    return { status: 'APPROVED', user: formatDriverDocs(data) };
+    const formatted = formatDriverDocs(data);
+    if (formatted.password) delete formatted.password;
+    return { status: data.registerstatus, user: formatted };
   }
 
   // ตรวจสอบว่ามี username นี้อยู่ในระบบแล้วหรือยัง (ยกเว้นผู้ที่ถูกปฏิเสธ)
@@ -170,11 +174,13 @@ class AuthModel {
 
   // สมัครสมาชิกคนขับพร้อมทั้งลงทะเบียนข้อมูลรถยนต์
   static async register(driverData, carData) {
+    const { driverskills, ...driverDbFields } = driverData;
+
     // 0. ตรวจสอบว่าเดิมมีบัญชีที่เคยถูกปฏิเสธอยู่หรือไม่ -> ถ้ามีให้ทำการอัปเดตแทนการ insert ใหม่
     const { data: existingDriver } = await supabase
       .from('driver')
       .select('username, driver_car, registerstatus')
-      .eq('username', driverData.username)
+      .eq('username', driverDbFields.username)
       .maybeSingle();
 
     if (existingDriver) {
@@ -187,17 +193,33 @@ class AuthModel {
       const { data: updatedDriver, error: driverErr } = await supabase
         .from('driver')
         .update({
-          ...driverData,
+          ...driverDbFields,
           registerstatus: 'รอดำเนินการ',
-          regisdate: new Date().toISOString()
+          regisdate: getLocalThaiISOString()
         })
-        .eq('username', driverData.username)
+        .eq('username', driverDbFields.username)
         .select()
         .maybeSingle();
 
       if (driverErr) {
         console.error("Error resubmitting driver:", driverErr);
         throw new Error(`ไม่สามารถอัปเดตข้อมูลการสมัครได้: ${driverErr.message}`);
+      }
+
+      // อัปเดต driverskill
+      if (driverskills && Array.isArray(driverskills) && driverskills.length > 0) {
+        try {
+          await supabase.from('driverskill').delete().eq('driver_id', driverDbFields.username);
+          const skillRows = driverskills.map(carTypeId => ({
+            driver_id: driverDbFields.username,
+            car_type_id: parseInt(carTypeId, 10)
+          })).filter(row => !isNaN(row.car_type_id));
+          if (skillRows.length > 0) {
+            await supabase.from('driverskill').insert(skillRows);
+          }
+        } catch (skillErr) {
+          console.error("Failed to update driverskill records:", skillErr);
+        }
       }
 
       return {
@@ -224,7 +246,7 @@ class AuthModel {
 
     // 2. เพิ่มข้อมูลคนขับโดยเชื่อมโยงไอดีรถยนต์ที่เพิ่งเพิ่มเข้าไป
     const driverRecord = {
-      ...driverData,
+      ...driverDbFields,
       driver_car: insertedCar.drivercarid
     };
 
@@ -249,9 +271,9 @@ class AuthModel {
     }
 
     // 3. บันทึกข้อมูลทักษะการขับรถยนต์ (driverskill table) ถ้ามีระบุ
-    if (driverData.driverskills && Array.isArray(driverData.driverskills) && driverData.driverskills.length > 0) {
+    if (driverskills && Array.isArray(driverskills) && driverskills.length > 0) {
       try {
-        const skillRows = driverData.driverskills.map(carTypeId => ({
+        const skillRows = driverskills.map(carTypeId => ({
           driver_id: insertedDriver.username,
           car_type_id: parseInt(carTypeId, 10)
         })).filter(row => !isNaN(row.car_type_id));

@@ -23,7 +23,7 @@ const upload = multer({ dest: 'uploads/' })
 // Import controller functions (เป็น async functions ที่จัดการ req/res)
 const { login, register, checkEmail, getStatus, getProfile } = require('../../controllers/pub/pub.controller')
 
-const { requestDriver, getServiceInfo, getServiceRequestById, simulateStep } = require('../../controllers/pub/service.controller')
+const { requestDriver, getServiceInfo, getServiceRequestById, simulateStep, cancelServiceRequest } = require('../../controllers/pub/service.controller')
 
 // ── Endpoints ─────────────────────────────────────────────────
 
@@ -69,6 +69,10 @@ router.get('/service-info/:username', getServiceInfo)
 // GET /api/pub/service-request/:requestId
 // Params: requestId — ดึง request เดียวสำหรับ polling สถานะ (หน้า Waiting)
 router.get('/service-request/:requestId', getServiceRequestById)
+
+// DELETE /api/pub/service-request/:requestId
+// Params: requestId — ลบรายการ request ออกจากฐานข้อมูลเมื่อกดยกเลิก
+router.delete('/service-request/:requestId', cancelServiceRequest)
 
 // POST /api/pub/service-request/:requestId/simulate-step
 // Body: { step } — จำลองขั้นตอนการเดินทาง

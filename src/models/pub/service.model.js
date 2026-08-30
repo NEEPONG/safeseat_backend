@@ -45,9 +45,28 @@ const findServiceRequestById = async (requestId) => {
   return data
 }
 
+/**
+ * ลบรายการเรียกคนขับออกจาก Supabase เมื่อกดยกเลิก
+ */
+const deleteServiceRequest = async (requestId) => {
+  if (!requestId) return null
+  // ลบข้อมูลที่เกี่ยวข้องใน servicedetail ถ้ามี
+  await supabase.from('servicedetail').delete().eq('requestid', requestId)
+  
+  const { data, error } = await supabase
+    .from('requestbypub')
+    .delete()
+    .eq('requestid', requestId)
+    .select()
+
+  if (error) throw error
+  return data
+}
+
 module.exports = {
   createServiceRequest,
   findServiceRequestsByPub,
-  findServiceRequestById
+  findServiceRequestById,
+  deleteServiceRequest
 }
 
