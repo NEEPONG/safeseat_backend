@@ -4,6 +4,7 @@ const profileController = require('../../controllers/user/profile.controller');
 
 router.get('/:phoneNo', profileController.getProfile);
 router.post('/update', profileController.updateProfile);
+router.post('/topup', profileController.topUpWallet);
 
 // User Car Routes
 router.get('/car/:phoneNo', profileController.getUserCars);

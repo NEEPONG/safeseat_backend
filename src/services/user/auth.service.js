@@ -22,13 +22,13 @@ class AuthService {
 
         // ถ้าไม่พบผู้ใช้ หรือเกิดข้อผิดพลาด
         if (error || !user) {
-            throw new Error('เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง');
+            throw new Error('ไม่พบข้อมูลผู้ใช้');
         }
 
         // เทียบรหัสผ่านแบบ Hash
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            throw new Error('เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง');
+            throw new Error('ไม่พบข้อมูลผู้ใช้');
         }
 
         // ลบรหัสผ่านออกจาก object ก่อนส่งกลับเพื่อความปลอดภัย
@@ -48,9 +48,9 @@ class AuthService {
             throw new Error('Please provide all required fields');
         }
 
-        const passwordRegex = /^[A-Za-z0-9!#_.]{8,16}$/;
+        const passwordRegex = /^[A-Za-z0-9!#_.]{8,50}$/;
         if (!passwordRegex.test(password)) {
-            throw new Error('รหัสผ่านไม่ตรงตามเงื่อนไข (ต้องมีความยาว 8-16 ตัวอักษร, ประกอบด้วยภาษาอังกฤษ ตัวเลข หรืออักขระพิเศษ !#_.)');
+            throw new Error('รหัสผ่านไม่ตรงตามเงื่อนไข (ต้องมีความยาว 8-50 ตัวอักษร, ประกอบด้วยภาษาอังกฤษ ตัวเลข หรืออักขระพิเศษ !#_.)');
         }
 
         const { data: existingUser } = await supabase
@@ -60,7 +60,7 @@ class AuthService {
             .single();
 
         if (existingUser) {
-            throw new Error('เบอร์โทรศัพท์นี้ถูกใช้งานแล้ว');
+            throw new Error('ข้อมูลผู้ใช้ซํ้า กรุณาลองใหม่อีกครั้ง');
         }
 
         // เข้ารหัสรหัสผ่านก่อนบันทึก
@@ -82,6 +82,30 @@ class AuthService {
         if (error) {
             console.error('Insert error:', error);
             throw new Error('เกิดข้อผิดพลาดในการสร้างบัญชี');
+        }
+
+        // หากมีการแนบข้อมูลรถยนต์เริ่มต้น ให้บันทึกลงตาราง usercar
+        const carData = userData.car || (userData.carbrand ? userData : null);
+        if (carData && carData.carbrand && carData.carplate && carData.car_type) {
+            try {
+                const { error: carError } = await supabase
+                    .from('usercar')
+                    .insert([
+                        {
+                            carbrand: carData.carbrand.trim(),
+                            carcolor: (carData.carcolor || '').trim(),
+                            carmodel: (carData.carmodel || '').trim(),
+                            carplate: carData.carplate.trim(),
+                            car_type: parseInt(carData.car_type, 10),
+                            user_id: phone
+                        }
+                    ]);
+                if (carError) {
+                    console.error('Insert car error during registration:', carError);
+                }
+            } catch (cErr) {
+                console.error('Exception inserting initial car:', cErr);
+            }
         }
     }
 }

@@ -1,6 +1,58 @@
 const supabase = require('./dbClient');
 
 class DriverReportModel {
+  // Helper to enrich reports with leader and follower driver profiles from buddyteam
+  static async enrichReportsWithDrivers(reports) {
+    if (!reports || !reports.length) return reports;
+
+    const teamIds = [...new Set(reports.map(r => r.requestbyuser?.buddy_team_id).filter(Boolean))];
+    if (!teamIds.length) return reports;
+
+    try {
+      const { data: teams } = await supabase
+        .from('buddyteam')
+        .select('*, leader:leaderid(username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carbrand, carmodel, carplate)), follower:followerid(username, firstname, lastname, phoneno, regisimagepath, drivercar:driver_car(carbrand, carmodel, carplate))')
+        .in('buddyteamid', teamIds);
+
+      if (teams && teams.length) {
+        const teamMap = new Map(teams.map(t => [t.buddyteamid, t]));
+        for (const report of reports) {
+          if (report.requestbyuser && report.requestbyuser.buddy_team_id) {
+            const team = teamMap.get(report.requestbyuser.buddy_team_id);
+            if (team) {
+              report.requestbyuser.buddyteam = team;
+              if (team.leader) {
+                report.requestbyuser.leader = {
+                  username: team.leader.username,
+                  firstname: team.leader.firstname,
+                  lastname: team.leader.lastname,
+                  phone_no: team.leader.phoneno,
+                  license_plate: team.leader.drivercar?.carplate || null,
+                  driver_car: team.leader.drivercar || null,
+                  regisimagepath: team.leader.regisimagepath || null,
+                };
+              }
+              if (team.follower) {
+                report.requestbyuser.follower = {
+                  username: team.follower.username,
+                  firstname: team.follower.firstname,
+                  lastname: team.follower.lastname,
+                  phone_no: team.follower.phoneno,
+                  license_plate: team.follower.drivercar?.carplate || null,
+                  driver_car: team.follower.drivercar || null,
+                  regisimagepath: team.follower.regisimagepath || null,
+                };
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Error enriching reports with driver details:", e.message);
+    }
+    return reports;
+  }
+
   // ดึงข้อมูลรายงานทั้งหมด
   static async getAllReports() {
     try {
@@ -27,7 +79,7 @@ class DriverReportModel {
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
-      return data;
+      return await this.enrichReportsWithDrivers(data || []);
     } catch (e) {
       console.error("Error in getAllReports:", e);
       const oneMonthAgo = new Date();
@@ -93,6 +145,60 @@ class DriverReportModel {
     });
   }
 
+  // ดึงรายงานที่ผู้ใช้ (ลูกค้า) เป็นผู้แจ้ง โดยดูจาก requestbyuser.user_id
+  static async getReportsByUser(userId) {
+    if (!userId) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('driverreport')
+        .select('*, requestbyuser!inner(*)')
+        .eq('requestbyuser.user_id', userId)
+        .order('reportdate', { ascending: false });
+
+      if (error) throw error;
+      return await this.enrichReportsWithDrivers(data || []);
+    } catch (e) {
+      console.warn("Join filter in getReportsByUser failed, filtering in JS:", e.message);
+      const allReports = await this.getAllReports();
+      return allReports.filter(report => {
+        const req = report.requestbyuser;
+        return req && req.user_id === userId;
+      });
+    }
+  }
+
+  // ดึงรายงานตาม request_id ของทริป
+  static async getReportByRequestId(requestId) {
+    if (!requestId) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('driverreport')
+        .select('*, requestbyuser(*)')
+        .eq('request_id', requestId)
+        .maybeSingle();
+
+      if (error) {
+        console.warn("Join with requestbyuser failed in getReportByRequestId:", error.message);
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('driverreport')
+          .select('*')
+          .eq('request_id', requestId)
+          .maybeSingle();
+        if (fallbackError) throw fallbackError;
+        return fallbackData;
+      }
+
+      if (!data) return null;
+      const enriched = await this.enrichReportsWithDrivers([data]);
+      return enriched[0] || data;
+    } catch (e) {
+      console.error("Error in getReportByRequestId:", e);
+      return null;
+    }
+  }
+
   // สร้างรายงานใหม่
   static async createReport(reportData) {
     const { data, error } = await supabase
@@ -107,3 +213,4 @@ class DriverReportModel {
 }
 
 module.exports = DriverReportModel;
+
