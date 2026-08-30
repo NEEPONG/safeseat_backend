@@ -20,8 +20,8 @@ const login = async (req, res) => {
         if (error.message === 'Please provide both phone and password') {
             return res.status(400).json({ error: error.message });
         }
-        if (error.message === 'เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง') {
-            return res.status(401).json({ error: error.message });
+        if (error.message === 'ไม่พบข้อมูลผู้ใช้' || error.message === 'เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง') {
+            return res.status(401).json({ error: 'ไม่พบข้อมูลผู้ใช้' });
         }
         return res.status(500).json({ error: 'Internal server error' });
     }
@@ -36,6 +36,7 @@ const register = async (req, res) => {
         if (
             error.message === 'Please provide all required fields' ||
             error.message.includes('รหัสผ่านไม่ตรงตามเงื่อนไข') ||
+            error.message.includes('ข้อมูลผู้ใช้ซ') ||
             error.message === 'เบอร์โทรศัพท์นี้ถูกใช้งานแล้ว'
         ) {
             return res.status(400).json({ error: error.message });

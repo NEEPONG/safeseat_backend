@@ -24,70 +24,13 @@ class UserController {
       const { username } = req.params;
       const profileData = { ...req.body };
 
-      // Parse drivercar if it is a JSON string
-      if (profileData.drivercar && typeof profileData.drivercar === 'string') {
-        try {
-          profileData.drivercar = JSON.parse(profileData.drivercar);
-        } catch (e) {
-          console.error("Error parsing drivercar JSON:", e);
-        }
-      } else if (!profileData.drivercar) {
-        profileData.drivercar = {};
-      }
-
-      // Upload files if any
-      if (req.files) {
-        const { uploadToSupabase, getRelativePath } = require('../../utils/supabaseStorage');
-        
-        let frontPath = null;
-        let sidePath = null;
-
-        if (req.files.frontImage && req.files.frontImage[0]) {
-          const uploadedFront = await uploadToSupabase(req.files.frontImage[0], 'images', 'drivers/cars');
-          frontPath = getRelativePath(uploadedFront);
-        }
-
-        if (req.files.sideImage && req.files.sideImage[0]) {
-          const uploadedSide = await uploadToSupabase(req.files.sideImage[0], 'images', 'drivers/cars');
-          sidePath = getRelativePath(uploadedSide);
-        }
-
-        if (frontPath || sidePath) {
-          // Get the current profile to retrieve the existing images
-          const currentProfile = await UserModel.getProfileByUsername(username);
-          let currentImagePathMap = {};
-
-          if (currentProfile && currentProfile.drivercar && currentProfile.drivercar.carimagepath) {
-            try {
-              const getCleanRelativePath = (pathStr) => {
-                return getRelativePath(pathStr);
-              };
-
-              const parsed = JSON.parse(currentProfile.drivercar.carimagepath);
-              if (parsed && typeof parsed === 'object') {
-                currentImagePathMap = {
-                  front: parsed.front ? getCleanRelativePath(parsed.front) : null,
-                  side: parsed.side ? getCleanRelativePath(parsed.side) : null,
-                };
-              }
-            } catch (e) {
-              // If it's a legacy single string
-              currentImagePathMap = {
-                front: getRelativePath(currentProfile.drivercar.carimagepath),
-                side: null
-              };
-            }
-          }
-
-          if (frontPath) currentImagePathMap.front = frontPath;
-          if (sidePath) currentImagePathMap.side = sidePath;
-
-          profileData.drivercar.carimagepath = JSON.stringify(currentImagePathMap);
-        }
+      // If updating vehicle data via /api/users/:username, delegate to VehicleController for backward compatibility
+      if (req.files || profileData.drivercar) {
+        const VehicleController = require('./vehicleController');
+        return VehicleController.updateVehicle(req, res);
       }
 
       const updatedProfile = await UserModel.updateProfile(username, profileData);
-
       return res.status(200).json(updatedProfile);
     } catch (error) {
       console.error("Error updating profile:", error);

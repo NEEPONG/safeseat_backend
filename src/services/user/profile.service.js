@@ -28,7 +28,7 @@ class ProfileService {
     /**
      * Update user profile fields.
      * @param {string} phone 
-     * @param {object} updates 
+     * @param {object} fieldsToUpdate 
      * @returns {Promise<object>} Updated user profile (without password)
      */
     static async updateProfile(phone, fieldsToUpdate) {
@@ -42,6 +42,7 @@ class ProfileService {
         if (fieldsToUpdate.email !== undefined) updates.email = fieldsToUpdate.email;
         if (fieldsToUpdate.mainaddress !== undefined) updates.mainaddress = fieldsToUpdate.mainaddress;
         if (fieldsToUpdate.profileimagepath !== undefined) updates.profileimagepath = fieldsToUpdate.profileimagepath;
+        if (fieldsToUpdate.walletbalance !== undefined) updates.walletbalance = parseFloat(fieldsToUpdate.walletbalance);
 
         const { data: updatedUser, error } = await supabase
             .from('User')
@@ -53,6 +54,51 @@ class ProfileService {
         if (error || !updatedUser) {
             console.error("Update error:", error);
             throw new Error('เกิดข้อผิดพลาดในการอัปเดตโปรไฟล์');
+        }
+
+        delete updatedUser.password;
+        return updatedUser;
+    }
+
+    /**
+     * Top up SafeSeat wallet for user.
+     * @param {string} phoneNo 
+     * @param {number|string} amount 
+     * @returns {Promise<object>} Updated user profile (without password)
+     */
+    static async topUpWallet(phoneNo, amount) {
+        if (!phoneNo || amount === undefined || amount === null) {
+            throw new Error('Please provide phone number and amount');
+        }
+
+        const numAmount = parseFloat(amount);
+        if (isNaN(numAmount) || numAmount <= 0) {
+            throw new Error('Invalid top up amount');
+        }
+
+        const { data: user, error: fetchErr } = await supabase
+            .from('User')
+            .select('*')
+            .eq('phoneno', phoneNo)
+            .single();
+
+        if (fetchErr || !user) {
+            throw new Error('ไม่พบข้อมูลผู้ใช้งาน');
+        }
+
+        const currentBalance = parseFloat(user.walletbalance || 0);
+        const newBalance = parseFloat((currentBalance + numAmount).toFixed(2));
+
+        const { data: updatedUser, error: updateErr } = await supabase
+            .from('User')
+            .update({ walletbalance: newBalance })
+            .eq('phoneno', phoneNo)
+            .select()
+            .single();
+
+        if (updateErr || !updatedUser) {
+            console.error("Top up wallet error:", updateErr);
+            throw new Error('เกิดข้อผิดพลาดในการเติมเงิน');
         }
 
         delete updatedUser.password;

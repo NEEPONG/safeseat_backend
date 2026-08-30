@@ -4,10 +4,12 @@ class DriverReportController {
   // GET /api/driver-reports
   static async getReports(req, res) {
     try {
-      const { username } = req.query;
+      const { username, userId } = req.query;
       let reports;
-      
-      if (username) {
+
+      if (userId) {
+        reports = await DriverReportModel.getReportsByUser(userId);
+      } else if (username) {
         reports = await DriverReportModel.getReportsByDriver(username);
       } else {
         reports = await DriverReportModel.getAllReports();
@@ -16,6 +18,25 @@ class DriverReportController {
       return res.status(200).json(reports);
     } catch (error) {
       console.error("Error fetching driver reports:", error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  // GET /api/driver-reports/check/:requestId
+  static async checkReportStatus(req, res) {
+    try {
+      const { requestId } = req.params;
+      if (!requestId) {
+        return res.status(400).json({ error: 'requestId is required' });
+      }
+
+      const report = await DriverReportModel.getReportByRequestId(parseInt(requestId, 10));
+      return res.status(200).json({
+        hasReported: !!report,
+        report: report || null,
+      });
+    } catch (error) {
+      console.error("Error checking driver report status:", error);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

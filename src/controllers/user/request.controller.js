@@ -18,6 +18,22 @@ class RequestController {
     }
   }
 
+  // GET /api/user/request/user/:userId?type=active|completed|cancelled&page=1&limit=5
+  static async getRequestsByUser(req, res) {
+    try {
+      const { userId } = req.params;
+      const { type, page, limit } = req.query;
+      const requests = await RequestService.getRequestsByUser(userId, type, { page, limit });
+      return res.status(200).json({ requests });
+    } catch (error) {
+      console.error("Error in getRequestsByUser:", error);
+      if (error.message === 'Please provide user_id') {
+        return res.status(400).json({ error: error.message });
+      }
+      return res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  }
+
   // GET /api/user/request/:id
   static async getRequestStatus(req, res) {
     try {
@@ -39,7 +55,7 @@ class RequestController {
       const { id } = req.params;
       const data = await RequestService.cancelRequest(id);
       return res.status(200).json({
-        message: 'Request canceled (deleted) successfully',
+        message: 'Request canceled successfully',
         data: data,
       });
     } catch (error) {
