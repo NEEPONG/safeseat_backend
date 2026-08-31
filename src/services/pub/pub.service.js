@@ -64,7 +64,7 @@ const registerPub = async (pubData) => {
     !username || !password || !pubName || !pubEmail || !pubPhone ||
     !pubAddress ||
     lat === undefined || lng === undefined || isNaN(lat) || isNaN(lng) || // lat/lng ต้องมีค่าและเป็นตัวเลข
-    !taxNumber || !bankAccountNo || !bankAccountName
+    !taxNumber || !bankAccountNo
   ) {
     throw new Error('กรุณากรอกข้อมูลให้ครบถ้วน')
   }
@@ -97,16 +97,9 @@ const registerPub = async (pubData) => {
     throw new Error('เลขผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก')
   }
 
-  // ── Validation 7: เลขที่บัญชีธนาคาร ────────────────────────
-  // ยอมรับตัวเลข 1-150 หลัก
-  if (!/^[0-9]{1,150}$/.test(bankAccountNo)) {
-    throw new Error('เลขที่บัญชีต้องเป็นตัวเลขเท่านั้น')
-  }
-
-  // ── Validation 8: ชื่อบัญชีธนาคาร ──────────────────────────
-  // ยอมรับภาษาไทย (ก-๙), อังกฤษ (a-zA-Z) และช่องว่าง (\s)
-  if (!/^[ก-๙a-zA-Z\s]{1,150}$/.test(bankAccountName)) {
-    throw new Error('ชื่อบัญชีต้องเป็นภาษาไทยหรืออังกฤษเท่านั้น')
+  // ── Validation 7: เลขบัญชีธนาคารกสิกรไทย 10-12 หลัก ────────
+  if (!/^[0-9]{10,12}$/.test(bankAccountNo)) {
+    throw new Error('เลขบัญชีธนาคารกสิกรไทยต้องเป็นตัวเลข 10–12 หลักเท่านั้น')
   }
 
   // ── ตรวจสอบ username ซ้ำ (query ฐานข้อมูล) ─────────────────
@@ -129,7 +122,7 @@ const registerPub = async (pubData) => {
           pubclose: pubClose,
           taxnumber: taxNumber,
           bankaccountno: bankAccountNo,
-          bankaccountname: bankAccountName,
+          bankaccountname: bankAccountName || 'ธนาคารกสิกรไทย',
           pubaddresslat: lat,
           pubaddresslng: lng,
           regisimagepath: regisImagePath || existing.regisimagepath,
@@ -195,7 +188,7 @@ const registerPub = async (pubData) => {
     taxnumber: taxNumber,
 
     bankaccountno:   bankAccountNo,
-    bankaccountname: bankAccountName,
+    bankaccountname: bankAccountName || 'ธนาคารกสิกรไทย',
 
     pubaddresslat: lat,
     pubaddresslng: lng,
