@@ -44,7 +44,8 @@ class BuddyRequestModel {
 
   // 3. ยอมรับคำขอ (เปลี่ยน teamstatus เป็น Ready)
   static async acceptRequest(requestId) {
-    const cleanId = parseInt(requestId, 10) || requestId;
+    const cleanId = parseInt(requestId, 10);
+    if (isNaN(cleanId)) throw new Error("Invalid requestId");
     
     // 1. ดึงข้อมูลทีมบัดดี้เพื่อระบุตัวผู้ส่งและผู้รับ
     const { data: team, error: getError } = await supabase
@@ -89,7 +90,8 @@ class BuddyRequestModel {
 
   // 4. ปฏิเสธหรือยกเลิกทีม (เปลี่ยนสถานะเป็น 'ยกเลิกทีม')
   static async removeRequest(requestId) {
-    const cleanId = parseInt(requestId, 10) || requestId;
+    const cleanId = parseInt(requestId, 10);
+    if (isNaN(cleanId)) throw new Error("Invalid requestId");
     
     // 1. เคลียร์ buddy_team_id ในตาราง driver ให้เป็น null เพื่อปล่อยคนขับทั้งสองคนให้เป็นอิสระ
     const { error: updateError } = await supabase
@@ -135,6 +137,10 @@ class BuddyRequestModel {
     const cleanRequestId = parseInt(requestId, 10);
     const cleanBuddyTeamId = parseInt(buddyTeamId, 10);
     
+    if (isNaN(cleanRequestId) || isNaN(cleanBuddyTeamId)) {
+      throw new Error("Invalid requestId or buddyTeamId");
+    }
+
     // ลองหาในตารางหลักก่อน หากไม่พบจึงไปหาในตารางรอง
     const primaryTable = isPubJob ? 'requestbypub' : 'requestbyuser';
     const secondaryTable = isPubJob ? 'requestbyuser' : 'requestbypub';
@@ -222,6 +228,10 @@ class BuddyRequestModel {
     const cleanRequestId = parseInt(requestId, 10);
     const cleanBuddyTeamId = parseInt(buddyTeamId, 10);
 
+    if (isNaN(cleanRequestId) || isNaN(cleanBuddyTeamId)) {
+      throw new Error("Invalid requestId or buddyTeamId");
+    }
+
     const primaryTable = isPubJob ? 'requestbypub' : 'requestbyuser';
     const secondaryTable = isPubJob ? 'requestbyuser' : 'requestbypub';
 
@@ -291,14 +301,18 @@ class BuddyRequestModel {
       console.error("Error setting buddy team to Ready:", teamError);
     }
 
-    // 4. แบ่งค่าบริการ: ระบบ SafeSeat หัก 20%, คนขับแต่ละคนได้คนละ 40%
+    // 4. แบ่งค่าบริการ:
+    // โมเดลเหมือน Grab:
+    // - หากเป็น App Wallet (paymentmethod = 2 หรือ wallet): ระบบเก็บเงินจากผู้ใช้ แล้วจ่ายเงินเข้ากระเป๋าคนขับคนละ 40% (Credit +)
+    // - หากเป็น เงินสด / QR พร้อมเพย์หน้ารถ (Cash): ลูกค้ารับชำระเงินสดไปแล้ว 100% เต็ม ระบบจะหักคอมมิชชันค่าบริการ 10% จากคนขับแต่ละคน (รวม 20% เข้าระบบ) (Deduct -)
     const requestFee = parseFloat(requestData.requestfee || 0);
-    const driverShare = parseFloat((requestFee * 0.40).toFixed(2));
+    const paymentMethodRaw = requestData.paymentmethod;
+    const paymentMethodInt = parseInt(paymentMethodRaw, 10);
+    const isAppWallet = (paymentMethodInt === 2 || String(paymentMethodRaw).toLowerCase().includes('wallet'));
 
-    if (driverShare > 0) {
-      // 4.1 หากเป็นรายการจากสถานบันเทิง (requestbypub) และชำระด้วย SafeSeat Wallet (2) ให้หักเงินจากกระเป๋าผู้ใช้เมื่อจบงาน
-      const paymentMethodInt = parseInt(requestData.paymentmethod, 10);
-      if (paymentMethodInt === 2 && requestData.user_id && tableUsed === 'requestbypub') {
+    if (requestFee > 0) {
+      // 4.1 หากเป็นรายการจากสถานบันเทิง (requestbypub) และชำระด้วย SafeSeat Wallet ให้หักเงินจากกระเป๋าผู้ใช้เมื่อจบงาน
+      if (isAppWallet && requestData.user_id && tableUsed === 'requestbypub') {
         try {
           const { data: userInfo, error: userGetErr } = await supabase
             .from('User')
@@ -320,7 +334,7 @@ class BuddyRequestModel {
         }
       }
 
-      // 4.2 ค้นหาสมาชิกในทีม (หัวหน้าทีมและผู้ติดตาม) เพื่อแบ่งจ่ายค่าบริการ
+      // 4.2 ค้นหาสมาชิกในทีม (หัวหน้าทีมและผู้ติดตาม) เพื่อคิดค่าบริการตามโมเดล Grab
       const { data: team, error: teamGetError } = await supabase
         .from('buddyteam')
         .select('leaderid, followerid')
@@ -331,6 +345,12 @@ class BuddyRequestModel {
         console.error("Error fetching team drivers:", teamGetError);
       } else if (team) {
         const drivers = [team.leaderid, team.followerid].filter(Boolean);
+
+        // คำนวณยอดเงินสำหรับคนขับ
+        // ถ้าเป็น App Wallet: คนขับแต่ละคนได้ +40%
+        // ถ้าเป็น Cash: หักคอมมิชชัน 10% จากคนขับแต่ละคน (คนขับ 2 คนรวมเป็น 20% เข้าระบบ)
+        const driverShare = parseFloat((requestFee * 0.40).toFixed(2));
+        const commissionPerDriver = parseFloat((requestFee * 0.10).toFixed(2));
 
         for (const driverUsername of drivers) {
           try {
@@ -344,37 +364,58 @@ class BuddyRequestModel {
             if (driverGetErr) throw driverGetErr;
 
             const currentBalance = parseFloat(driverInfo?.walletbalance || 0);
-            const newBalance = parseFloat((currentBalance + driverShare).toFixed(2));
 
-            // อัปเดตยอดเงินในกระเป๋าเงินของคนขับ
-            const { error: driverUpdateErr } = await supabase
-              .from('driver')
-              .update({ walletbalance: newBalance })
-              .eq('username', driverUsername);
+            if (isAppWallet) {
+              // กรณี 1: App Wallet -> โอนเงินค่ารอบเข้ากระเป๋าคนขับ (+40%)
+              const newBalance = parseFloat((currentBalance + driverShare).toFixed(2));
 
-            if (driverUpdateErr) throw driverUpdateErr;
+              const { error: driverUpdateErr } = await supabase
+                .from('driver')
+                .update({ walletbalance: newBalance })
+                .eq('username', driverUsername);
 
-            // บันทึกประวัติการทำรายการเงินเข้า (Transaction)
-            const { error: txError } = await supabase
-              .from('driverwallettransaction')
-              .insert({
-                driver_id: driverUsername,
-                amount: driverShare,
-                trantype: 'service fee',
-                transtatus: 'Success'
-              });
+              if (driverUpdateErr) throw driverUpdateErr;
 
-            if (txError) throw txError;
+              await supabase
+                .from('driverwallettransaction')
+                .insert({
+                  driver_id: driverUsername,
+                  amount: driverShare,
+                  trantype: 'service fee',
+                  transtatus: 'Success'
+                });
 
-            console.log(`Successfully credited ${driverShare} to driver ${driverUsername}. New balance: ${newBalance}`);
+              console.log(`[Wallet Payment] Credited ${driverShare} to driver ${driverUsername}. New balance: ${newBalance}`);
+            } else {
+              // กรณี 2: เงินสด / QR (Grab Style) -> คนขับรับเงินสดหน้างานเต็มแล้ว ระบบหักคอมมิชชัน (-10% ต่อคน)
+              const newBalance = parseFloat((currentBalance - commissionPerDriver).toFixed(2));
+
+              const { error: driverUpdateErr } = await supabase
+                .from('driver')
+                .update({ walletbalance: newBalance })
+                .eq('username', driverUsername);
+
+              if (driverUpdateErr) throw driverUpdateErr;
+
+              await supabase
+                .from('driverwallettransaction')
+                .insert({
+                  driver_id: driverUsername,
+                  amount: commissionPerDriver,
+                  trantype: 'commission',
+                  transtatus: 'Success'
+                });
+
+              console.log(`[Cash Payment] Deducted commission ${commissionPerDriver} from driver ${driverUsername}. New balance: ${newBalance}`);
+            }
           } catch (err) {
-            console.error(`Failed to credit wallet for driver ${driverUsername}:`, err);
+            console.error(`Failed to update wallet for driver ${driverUsername}:`, err);
           }
         }
       }
     }
 
-    return { message: 'เสร็จสิ้นงานและจ่ายค่าบริการเรียบร้อย', request: updatedReq };
+    return { message: 'เสร็จสิ้นงานและจัดการค่าบริการเรียบร้อย', request: updatedReq };
   }
 
   // 8. ดึงรายชื่อบัดดี้ที่เคยร่วมงานกันล่าสุด (Recent Buddies)

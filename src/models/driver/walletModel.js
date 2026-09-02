@@ -26,13 +26,22 @@ class WalletModel {
     if (txError) throw txError;
     
     // แปลงโครงสร้างข้อมูลให้ตรงกับรูปแบบที่แอปมือถือต้องการ
-    return transactions.map(tx => ({
-        id: tx.tranid,
-        type: tx.trantype.toLowerCase() === 'withdraw' ? 'withdraw' : 'topup',
-        created_at: tx.trandate,
-        amount: tx.amount,
-        status: tx.transtatus.toLowerCase() === 'success' ? 'success' : 'pending'
-    }));
+    return transactions.map(tx => {
+        const typeLower = (tx.trantype || '').toLowerCase();
+        let mappedType = 'topup';
+        if (typeLower === 'withdraw') {
+          mappedType = 'withdraw';
+        } else if (typeLower === 'commission') {
+          mappedType = 'commission';
+        }
+        return {
+          id: tx.tranid,
+          type: mappedType,
+          created_at: tx.trandate,
+          amount: tx.amount,
+          status: (tx.transtatus || '').toLowerCase() === 'success' ? 'success' : 'pending'
+        };
+    });
   }
 
   static async withdraw(username, amount) {

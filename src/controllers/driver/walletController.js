@@ -30,16 +30,16 @@ class WalletController {
       const { username } = req.params;
       const { amount } = req.body;
       
-      if (!amount || amount <= 0) {
-        return res.status(400).json({ error: 'Invalid amount' });
+      if (!amount || isNaN(amount) || Number(amount) < 100) {
+        return res.status(400).json({ error: 'จำนวนเงินถอนขั้นต่ำคือ 100 บาท' });
       }
 
-      const result = await WalletModel.withdraw(username, amount);
+      const result = await WalletModel.withdraw(username, Number(amount));
       return res.status(200).json(result);
     } catch (error) {
       console.error("Error withdrawing:", error);
       if (error.message === "Insufficient balance") {
-         return res.status(400).json({ error: "Insufficient balance" });
+         return res.status(400).json({ error: "ยอดเงินคงเหลือไม่เพียงพอสำหรับการถอน" });
       }
       return res.status(500).json({ error: 'Internal server error' });
     }
