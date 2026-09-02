@@ -180,10 +180,33 @@ class AdminController {
 
       const { getFullStorageUrl } = require('../../utils/supabaseStorage');
       let pubsData = (data || []).map(pub => {
+        let pubimagepath = pub.pubimagepath ? getFullStorageUrl(pub.pubimagepath) : null;
+        let regisimagepath = pub.regisimagepath;
+
+        if (regisimagepath) {
+          try {
+            const docs = JSON.parse(regisimagepath);
+            if (docs && typeof docs === 'object' && !Array.isArray(docs)) {
+              if (docs.storefront || docs.pubImagePath || docs.shop) {
+                pubimagepath = getFullStorageUrl(docs.storefront || docs.pubImagePath || docs.shop);
+              }
+              const formattedDocs = {};
+              for (const [k, v] of Object.entries(docs)) {
+                formattedDocs[k] = getFullStorageUrl(v);
+              }
+              regisimagepath = JSON.stringify(formattedDocs);
+            } else {
+              regisimagepath = getFullStorageUrl(regisimagepath);
+            }
+          } catch {
+            regisimagepath = getFullStorageUrl(regisimagepath);
+          }
+        }
+
         return {
           ...pub,
-          regisimagepath: pub.regisimagepath ? getFullStorageUrl(pub.regisimagepath) : null,
-          pubimagepath: pub.pubimagepath ? getFullStorageUrl(pub.pubimagepath) : null,
+          regisimagepath: regisimagepath,
+          pubimagepath: pubimagepath,
         };
       });
 

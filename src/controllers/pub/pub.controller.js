@@ -44,12 +44,23 @@ const register = async (req, res) => {
 
     // อัปโหลดรูปภาพไปยัง Supabase Storage และเก็บ URL แทน path ของเครื่อง local
     if (req.files) {
+      let licensePath = null
+      let storefrontPath = null
+
       if (req.files.regisImagePath) {
-        pubData.regisImagePath = await uploadToSupabase(req.files.regisImagePath[0], 'images', 'pubs/profile')
+        licensePath = await uploadToSupabase(req.files.regisImagePath[0], 'images', 'pubs/profile')
       }
       if (req.files.pubImagePath) {
-        // อัปโหลดเพื่อเคลียร์โฟลเดอร์ uploads และเผื่อกรณีที่ต้องการใช้งานรูปหน้าร้านในอนาคต
-        await uploadToSupabase(req.files.pubImagePath[0], 'images', 'pubs/storefront')
+        storefrontPath = await uploadToSupabase(req.files.pubImagePath[0], 'images', 'pubs/storefront')
+      }
+
+      if (licensePath || storefrontPath) {
+        pubData.regisImagePath = JSON.stringify({
+          license: licensePath,
+          storefront: storefrontPath,
+          regisImagePath: licensePath,
+          pubImagePath: storefrontPath
+        })
       }
     }
 

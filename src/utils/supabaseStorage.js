@@ -162,11 +162,34 @@ const formatDriverDocs = (driver) => {
   return driver;
 };
 
+const formatPubDocs = (pub) => {
+  if (!pub || !pub.regisimagepath) return pub;
+  try {
+    const docs = JSON.parse(pub.regisimagepath);
+    if (docs && typeof docs === 'object' && !Array.isArray(docs)) {
+      if (docs.storefront || docs.pubImagePath || docs.shop) {
+        pub.pubimagepath = getFullStorageUrl(docs.storefront || docs.pubImagePath || docs.shop);
+      }
+      const formattedDocs = {};
+      for (const [key, val] of Object.entries(docs)) {
+        formattedDocs[key] = getFullStorageUrl(val);
+      }
+      pub.regisimagepath = JSON.stringify(formattedDocs);
+    } else {
+      pub.regisimagepath = getFullStorageUrl(pub.regisimagepath);
+    }
+  } catch (e) {
+    pub.regisimagepath = getFullStorageUrl(pub.regisimagepath);
+  }
+  return pub;
+};
+
 module.exports = {
   uploadToSupabase,
   getRelativePath,
   getFullStorageUrl,
   formatDriverDocs,
+  formatPubDocs,
   compressPath,
   decompressPath
 };
