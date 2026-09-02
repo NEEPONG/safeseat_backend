@@ -55,12 +55,11 @@ const register = async (req, res) => {
       }
 
       if (licensePath || storefrontPath) {
-        pubData.regisImagePath = JSON.stringify({
-          license: licensePath,
-          storefront: storefrontPath,
-          regisImagePath: licensePath,
-          pubImagePath: storefrontPath
-        })
+        const { getRelativePath } = require('../../utils/supabaseStorage')
+        pubData.regisImagePath = JSON.stringify([
+          getRelativePath(licensePath),
+          getRelativePath(storefrontPath)
+        ])
       }
     }
 

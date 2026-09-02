@@ -178,37 +178,8 @@ class AdminController {
 
       if (error) throw error;
 
-      const { getFullStorageUrl } = require('../../utils/supabaseStorage');
-      let pubsData = (data || []).map(pub => {
-        let pubimagepath = pub.pubimagepath ? getFullStorageUrl(pub.pubimagepath) : null;
-        let regisimagepath = pub.regisimagepath;
-
-        if (regisimagepath) {
-          try {
-            const docs = JSON.parse(regisimagepath);
-            if (docs && typeof docs === 'object' && !Array.isArray(docs)) {
-              if (docs.storefront || docs.pubImagePath || docs.shop) {
-                pubimagepath = getFullStorageUrl(docs.storefront || docs.pubImagePath || docs.shop);
-              }
-              const formattedDocs = {};
-              for (const [k, v] of Object.entries(docs)) {
-                formattedDocs[k] = getFullStorageUrl(v);
-              }
-              regisimagepath = JSON.stringify(formattedDocs);
-            } else {
-              regisimagepath = getFullStorageUrl(regisimagepath);
-            }
-          } catch {
-            regisimagepath = getFullStorageUrl(regisimagepath);
-          }
-        }
-
-        return {
-          ...pub,
-          regisimagepath: regisimagepath,
-          pubimagepath: pubimagepath,
-        };
-      });
+      const { formatPubDocs } = require('../../utils/supabaseStorage');
+      let pubsData = (data || []).map(pub => formatPubDocs(pub));
 
       // เรียงลำดับ: สถานะรอดำเนินการ (pending) ขึ้นก่อน ตามด้วยลำดับวันที่สมัครก่อน
       pubsData.sort((a, b) => {

@@ -181,15 +181,12 @@ const formatPubDocs = (pub) => {
   if (!pub || !pub.regisimagepath) return pub;
   try {
     const docs = JSON.parse(pub.regisimagepath);
-    if (docs && typeof docs === 'object' && !Array.isArray(docs)) {
-      if (docs.storefront || docs.pubImagePath || docs.shop) {
-        pub.pubimagepath = getFullStorageUrl(docs.storefront || docs.pubImagePath || docs.shop);
-      }
-      const formattedDocs = {};
-      for (const [key, val] of Object.entries(docs)) {
-        formattedDocs[key] = getFullStorageUrl(val);
-      }
-      pub.regisimagepath = JSON.stringify(formattedDocs);
+    if (Array.isArray(docs)) {
+      pub.regisimagepath = getFullStorageUrl(docs[0]);
+      pub.pubimagepath = docs[1] ? getFullStorageUrl(docs[1]) : null;
+    } else if (docs && typeof docs === 'object') {
+      pub.regisimagepath = getFullStorageUrl(docs.license || docs.l || docs.regisImagePath);
+      pub.pubimagepath = getFullStorageUrl(docs.storefront || docs.s || docs.pubImagePath || docs.shop);
     } else {
       pub.regisimagepath = getFullStorageUrl(pub.regisimagepath);
     }
