@@ -259,6 +259,23 @@ class RequestService {
             request.usercar = await enrichUserCar(request.user_car_id);
         }
 
+        // Load user profile details (name, phone, email, etc.)
+        if (request.user_id) {
+            const { data: userProfile } = await supabase
+                .from('User')
+                .select('phoneno, name, email, profileimagepath')
+                .eq('phoneno', request.user_id)
+                .maybeSingle();
+
+            if (userProfile) {
+                request.user = userProfile;
+                const displayName = userProfile.name || userProfile.phoneno;
+                request.custname = displayName;
+                request.customer_name = displayName;
+                request.phoneno = request.phoneno || userProfile.phoneno;
+            }
+        }
+
         // If a driver buddy team is assigned, load its details
         if (request.buddy_team_id) {
             const { data: team } = await supabase
