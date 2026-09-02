@@ -159,6 +159,21 @@ const formatDriverDocs = (driver) => {
     // If not a JSON string, try converting it as a single relative path
     driver.regisimagepath = getFullStorageUrl(driver.regisimagepath);
   }
+
+  // Format drivercar vehicle image
+  if (driver.drivercar) {
+    if (Array.isArray(driver.drivercar)) {
+      driver.drivercar = driver.drivercar.map(c => ({
+        ...c,
+        carimagepath: c?.carimagepath ? getFullStorageUrl(c.carimagepath) : null
+      }));
+    } else if (typeof driver.drivercar === 'object') {
+      if (driver.drivercar.carimagepath) {
+        driver.drivercar.carimagepath = getFullStorageUrl(driver.drivercar.carimagepath);
+      }
+    }
+  }
+
   return driver;
 };
 
