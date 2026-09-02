@@ -70,16 +70,18 @@ class DispatcherService {
       }
 
       // หา requiredcartype ของงาน (ถ้ามาจาก user และไม่มี requiredcartype ใน payload ให้ดึงจากตาราง usercar)
-      let requiredCarType = job.requiredcartype ? parseInt(job.requiredcartype, 10) : null;
+      const parsedReqType = parseInt(job.requiredcartype, 10);
+      let requiredCarType = (!isNaN(parsedReqType) && parsedReqType > 0) ? parsedReqType : null;
       let carModelName = job.carmodel || null;
       let carPlateName = job.carplate || null;
 
-      if (!requiredCarType && job.user_car_id) {
+      const parsedUserCarId = parseInt(job.user_car_id, 10);
+      if (!requiredCarType && !isNaN(parsedUserCarId)) {
         try {
           const { data: userCarData } = await supabase
             .from('usercar')
             .select('car_type, carbrand, carmodel, carplate, cartype(cartypename)')
-            .eq('usercarid', parseInt(job.user_car_id, 10))
+            .eq('usercarid', parsedUserCarId)
             .maybeSingle();
 
           if (userCarData) {

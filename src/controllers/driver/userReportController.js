@@ -27,9 +27,10 @@ class UserReportController {
     try {
       const { reporttype, reportdetail, request_id } = req.body;
 
+      const cleanRequestId = parseInt(request_id, 10);
       // Basic validation
-      if (!reporttype || !request_id) {
-        return res.status(400).json({ error: 'reporttype and request_id are required' });
+      if (!reporttype || !request_id || isNaN(cleanRequestId)) {
+        return res.status(400).json({ error: 'reporttype and valid request_id are required' });
       }
 
       let reportimagepath = null;
@@ -46,7 +47,7 @@ class UserReportController {
       const reportData = {
         reporttype,
         reportdetail: reportdetail || '',
-        request_id: parseInt(request_id),
+        request_id: cleanRequestId,
         reportstatus: 'กำลังดำเนินการ',
         reportdate: toThaiLocalISOString(req.body.reportdate),
       };

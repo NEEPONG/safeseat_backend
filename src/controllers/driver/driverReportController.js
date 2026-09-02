@@ -47,11 +47,12 @@ class DriverReportController {
   static async checkReportStatus(req, res) {
     try {
       const { requestId } = req.params;
-      if (!requestId) {
-        return res.status(400).json({ error: 'requestId is required' });
+      const cleanRequestId = parseInt(requestId, 10);
+      if (!requestId || isNaN(cleanRequestId)) {
+        return res.status(400).json({ error: 'Valid requestId is required' });
       }
 
-      const report = await DriverReportModel.getReportByRequestId(parseInt(requestId, 10));
+      const report = await DriverReportModel.getReportByRequestId(cleanRequestId);
       return res.status(200).json({
         hasReported: !!report,
         report: report || null,
@@ -66,20 +67,22 @@ class DriverReportController {
   static async createReport(req, res) {
     try {
       const reportData = req.body;
+      const cleanRequestId = parseInt(reportData.request_id, 10);
       
       // Basic validation
-      if (!reportData.reporttype || !reportData.request_id) {
-        return res.status(400).json({ error: 'reporttype and request_id are required' });
+      if (!reportData.reporttype || !reportData.request_id || isNaN(cleanRequestId)) {
+        return res.status(400).json({ error: 'reporttype and valid request_id are required' });
       }
 
       // Check if report already exists for this request_id (1 report per trip constraint)
-      const existingReport = await DriverReportModel.getReportByRequestId(parseInt(reportData.request_id, 10));
+      const existingReport = await DriverReportModel.getReportByRequestId(cleanRequestId);
       if (existingReport) {
         return res.status(409).json({ error: 'คุณได้ส่งรายงานสำหรับรายการนี้ไปแล้ว ไม่สามารถรายงานซ้ำได้' });
       }
 
       const payload = {
         ...reportData,
+        request_id: cleanRequestId,
         reportdate: toThaiLocalISOString(reportData.reportdate),
         reportstatus: reportData.reportstatus || 'รอดำเนินการ'
       };
