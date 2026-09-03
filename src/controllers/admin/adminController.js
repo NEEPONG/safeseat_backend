@@ -178,14 +178,8 @@ class AdminController {
 
       if (error) throw error;
 
-      const { getFullStorageUrl } = require('../../utils/supabaseStorage');
-      let pubsData = (data || []).map(pub => {
-        return {
-          ...pub,
-          regisimagepath: pub.regisimagepath ? getFullStorageUrl(pub.regisimagepath) : null,
-          pubimagepath: pub.pubimagepath ? getFullStorageUrl(pub.pubimagepath) : null,
-        };
-      });
+      const { formatPubDocs } = require('../../utils/supabaseStorage');
+      let pubsData = (data || []).map(pub => formatPubDocs(pub));
 
       // เรียงลำดับ: สถานะรอดำเนินการ (pending) ขึ้นก่อน ตามด้วยลำดับวันที่สมัครก่อน
       pubsData.sort((a, b) => {

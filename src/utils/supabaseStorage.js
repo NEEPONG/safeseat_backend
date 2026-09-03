@@ -159,7 +159,41 @@ const formatDriverDocs = (driver) => {
     // If not a JSON string, try converting it as a single relative path
     driver.regisimagepath = getFullStorageUrl(driver.regisimagepath);
   }
+
+  // Format drivercar vehicle image
+  if (driver.drivercar) {
+    if (Array.isArray(driver.drivercar)) {
+      driver.drivercar = driver.drivercar.map(c => ({
+        ...c,
+        carimagepath: c?.carimagepath ? getFullStorageUrl(c.carimagepath) : null
+      }));
+    } else if (typeof driver.drivercar === 'object') {
+      if (driver.drivercar.carimagepath) {
+        driver.drivercar.carimagepath = getFullStorageUrl(driver.drivercar.carimagepath);
+      }
+    }
+  }
+
   return driver;
+};
+
+const formatPubDocs = (pub) => {
+  if (!pub || !pub.regisimagepath) return pub;
+  try {
+    const docs = JSON.parse(pub.regisimagepath);
+    if (Array.isArray(docs)) {
+      pub.regisimagepath = getFullStorageUrl(docs[0]);
+      pub.pubimagepath = docs[1] ? getFullStorageUrl(docs[1]) : null;
+    } else if (docs && typeof docs === 'object') {
+      pub.regisimagepath = getFullStorageUrl(docs.license || docs.l || docs.regisImagePath);
+      pub.pubimagepath = getFullStorageUrl(docs.storefront || docs.s || docs.pubImagePath || docs.shop);
+    } else {
+      pub.regisimagepath = getFullStorageUrl(pub.regisimagepath);
+    }
+  } catch (e) {
+    pub.regisimagepath = getFullStorageUrl(pub.regisimagepath);
+  }
+  return pub;
 };
 
 module.exports = {
@@ -167,6 +201,7 @@ module.exports = {
   getRelativePath,
   getFullStorageUrl,
   formatDriverDocs,
+  formatPubDocs,
   compressPath,
   decompressPath
 };
