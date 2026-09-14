@@ -277,10 +277,17 @@ class AdminController {
   // GET /api/admin/driver-reports
   static async getDriverReports(req, res) {
     try {
-      // ดึงรายงานเกี่ยวกับคนขับ (รวมทุกสถานะ)
+      // ลบข้อมูลรายงานคนขับที่ถูกปฏิเสธออกจาก Supabase อัตโนมัติ (Cleanup)
+      await supabase
+        .from('driverreport')
+        .delete()
+        .in('reportstatus', ['ปฏิเสธ', 'ไม่อนุมัติ', 'rejected']);
+
+      // ดึงรายงานเกี่ยวกับคนขับ (เฉพาะรายการที่ยังไม่ถูกปฏิเสธ)
       const { data, error } = await supabase
         .from('driverreport')
         .select('*')
+        .not('reportstatus', 'in', '("ปฏิเสธ","ไม่อนุมัติ","rejected")')
         .order('reportdate', { ascending: true });
 
       if (error) throw error;
@@ -323,10 +330,17 @@ class AdminController {
   // GET /api/admin/user-reports
   static async getUserReports(req, res) {
     try {
-      // ดึงรายงานเกี่ยวกับลูกค้า / ผู้ใช้ (รวมทุกสถานะ)
+      // ลบข้อมูลรายงานผู้ใช้ที่ถูกปฏิเสธออกจาก Supabase อัตโนมัติ (Cleanup)
+      await supabase
+        .from('userreport')
+        .delete()
+        .in('reportstatus', ['ปฏิเสธ', 'ไม่อนุมัติ', 'rejected']);
+
+      // ดึงรายงานเกี่ยวกับลูกค้า / ผู้ใช้ (เฉพาะรายการที่ยังไม่ถูกปฏิเสธ)
       const { data, error } = await supabase
         .from('userreport')
         .select('*')
+        .not('reportstatus', 'in', '("ปฏิเสธ","ไม่อนุมัติ","rejected")')
         .order('reportdate', { ascending: true });
 
       if (error) throw error;
