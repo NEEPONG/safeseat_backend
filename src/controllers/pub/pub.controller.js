@@ -80,7 +80,7 @@ const register = async (req, res) => {
 const checkEmail = async (req, res) => {
   try {
     const emailVal = req.body.email || req.body.pubEmail
-    const phoneVal = req.body.phone || req.body.pubPhone
+    const phoneVal = req.body.phone || req.body.pubPhone || req.body.phoneNo
     const taxVal = req.body.taxNumber || req.body.taxnumber
     const pubNameVal = req.body.pubName || req.body.pubname
     const bankVal = req.body.bankAccountNo || req.body.bankaccountno
@@ -88,7 +88,7 @@ const checkEmail = async (req, res) => {
     await pubService.checkEmail(emailVal, phoneVal, taxVal, pubNameVal, bankVal, usernameVal)
     res.json({ success: true, message: 'ข้อมูลสามารถใช้งานได้' })
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message })
+    res.status(400).json({ success: false, message: err.message, error: err.message })
   }
 }
 

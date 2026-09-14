@@ -109,41 +109,71 @@ class AuthModel {
     return false;
   }
 
-  // Check if phone number already exists in driver, pub, or User (excluding rejected)
+  // Check if phone number already exists in driver, pub, User, requestbypub, requestbyuser (excluding rejected)
   static async checkDuplicatePhone(phoneno) {
     if (!phoneno) return false;
-    const cleanPhone = String(phoneno).trim();
+    const rawPhone = String(phoneno).trim();
+    const digitsOnly = rawPhone.replace(/\D/g, '');
+    if (!digitsOnly) return false;
 
     // 1. ตรวจสอบตาราง driver (phoneno)
-    const { data: driverData } = await supabase
-      .from('driver')
-      .select('phoneno, registerstatus')
-      .eq('phoneno', cleanPhone)
-      .maybeSingle();
+    try {
+      const { data: driverData } = await supabase
+        .from('driver')
+        .select('phoneno, registerstatus')
+        .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%`)
+        .limit(5);
 
-    if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true;
+      if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) {
+        return true;
+      }
+    } catch (e) {}
 
     // 2. ตรวจสอบตาราง pub (pubphone)
-    const { data: pubData } = await supabase
-      .from('pub')
-      .select('pubphone, regisstatus')
-      .eq('pubphone', cleanPhone)
-      .maybeSingle();
+    try {
+      const { data: pubData } = await supabase
+        .from('pub')
+        .select('pubphone, regisstatus')
+        .or(`pubphone.eq.${rawPhone},pubphone.eq.${digitsOnly},pubphone.ilike.%${digitsOnly}%`)
+        .limit(5);
 
-    if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true;
+      if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) {
+        return true;
+      }
+    } catch (e) {}
 
     // 3. ตรวจสอบตาราง User (phoneno)
     try {
       const { data: userData } = await supabase
         .from('User')
         .select('phoneno')
-        .eq('phoneno', cleanPhone)
-        .maybeSingle();
+        .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%`)
+        .limit(5);
 
-      if (userData) return true;
-    } catch (e) {
-      // User table fallback
-    }
+      if (userData && userData.length > 0) return true;
+    } catch (e) {}
+
+    // 4. ตรวจสอบตาราง requestbypub (phoneno & phoneemer)
+    try {
+      const { data: reqPubData } = await supabase
+        .from('requestbypub')
+        .select('phoneno, phoneemer')
+        .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneemer.eq.${rawPhone},phoneemer.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%,phoneemer.ilike.%${digitsOnly}%`)
+        .limit(5);
+
+      if (reqPubData && reqPubData.length > 0) return true;
+    } catch (e) {}
+
+    // 5. ตรวจสอบตาราง requestbyuser (phoneno & phoneemer)
+    try {
+      const { data: reqUserData } = await supabase
+        .from('requestbyuser')
+        .select('phoneno, phoneemer')
+        .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneemer.eq.${rawPhone},phoneemer.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%,phoneemer.ilike.%${digitsOnly}%`)
+        .limit(5);
+
+      if (reqUserData && reqUserData.length > 0) return true;
+    } catch (e) {}
 
     return false;
   }
