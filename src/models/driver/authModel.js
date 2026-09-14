@@ -51,15 +51,28 @@ class AuthModel {
 
   // ตรวจสอบว่ามี username นี้อยู่ในระบบแล้วหรือยัง (ยกเว้นผู้ที่ถูกปฏิเสธ)
   static async checkDuplicateUsername(username) {
-    const { data, error } = await supabase
+    if (!username) return false;
+    const cleanUser = String(username).trim();
+
+    // 1. ตรวจสอบตาราง driver
+    const { data: driverData, error } = await supabase
       .from('driver')
       .select('username, registerstatus')
-      .eq('username', username)
+      .eq('username', cleanUser)
       .maybeSingle();
 
-    if (error || !data) return false;
-    if (data.registerstatus === 'ปฏิเสธ' || data.registerstatus === 'rejected') return false;
-    return true;
+    if (!error && driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true;
+
+    // 2. ตรวจสอบตาราง pub
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('username, regisstatus')
+      .eq('username', cleanUser)
+      .maybeSingle();
+
+    if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true;
+
+    return false;
   }
 
   // ดึงสถานะการสมัครสมาชิกของคนขับ
