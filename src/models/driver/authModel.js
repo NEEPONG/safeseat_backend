@@ -96,24 +96,41 @@ class AuthModel {
     return false;
   }
 
-  // Check if phone number already exists in driver or pub (excluding rejected)
+  // Check if phone number already exists in driver, pub, or User (excluding rejected)
   static async checkDuplicatePhone(phoneno) {
     if (!phoneno) return false;
+    const cleanPhone = String(phoneno).trim();
+
+    // 1. ตรวจสอบตาราง driver (phoneno)
     const { data: driverData } = await supabase
       .from('driver')
       .select('phoneno, registerstatus')
-      .eq('phoneno', phoneno)
+      .eq('phoneno', cleanPhone)
       .maybeSingle();
 
     if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true;
 
+    // 2. ตรวจสอบตาราง pub (pubphone)
     const { data: pubData } = await supabase
       .from('pub')
       .select('pubphone, regisstatus')
-      .eq('pubphone', phoneno)
+      .eq('pubphone', cleanPhone)
       .maybeSingle();
 
     if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true;
+
+    // 3. ตรวจสอบตาราง User (phoneno)
+    try {
+      const { data: userData } = await supabase
+        .from('User')
+        .select('phoneno')
+        .eq('phoneno', cleanPhone)
+        .maybeSingle();
+
+      if (userData) return true;
+    } catch (e) {
+      // User table fallback
+    }
 
     return false;
   }

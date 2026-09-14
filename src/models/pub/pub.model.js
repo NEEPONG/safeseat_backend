@@ -103,13 +103,39 @@ const checkDuplicateEmailCrossTable = async (email) => {
   return false
 }
 
-// ── Query: ตรวจสอบเบอร์โทรซ้ำข้ามตาราง (pub & driver) ───────────────────
+// ── Query: ตรวจสอบเบอร์โทรซ้ำข้ามตาราง (pub, driver & User) ───────────────────
 const checkDuplicatePhoneCrossTable = async (phone) => {
   if (!phone) return false
-  const { data: pubData } = await supabase.from('pub').select('pubphone, regisstatus').eq('pubphone', phone).maybeSingle()
+  const cleanPhone = String(phone).trim()
+
+  // 1. ตรวจสอบตาราง pub (pubphone)
+  const { data: pubData } = await supabase
+    .from('pub')
+    .select('pubphone, regisstatus')
+    .eq('pubphone', cleanPhone)
+    .maybeSingle()
   if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true
-  const { data: driverData } = await supabase.from('driver').select('phoneno, registerstatus').eq('phoneno', phone).maybeSingle()
+
+  // 2. ตรวจสอบตาราง driver (phoneno)
+  const { data: driverData } = await supabase
+    .from('driver')
+    .select('phoneno, registerstatus')
+    .eq('phoneno', cleanPhone)
+    .maybeSingle()
   if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true
+
+  // 3. ตรวจสอบตาราง User (phoneno)
+  try {
+    const { data: userData } = await supabase
+      .from('User')
+      .select('phoneno')
+      .eq('phoneno', cleanPhone)
+      .maybeSingle()
+    if (userData) return true
+  } catch (e) {
+    // User table fallback
+  }
+
   return false
 }
 
