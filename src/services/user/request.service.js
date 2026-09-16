@@ -2,6 +2,25 @@ const { supabase } = require('../../config/supabase.js');
 const { getFullStorageUrl } = require('../../utils/supabaseStorage.js');
 
 /**
+ * Returns local Thailand ISO string (UTC+7) without timezone offset for timestamp columns.
+ * @param {Date} d 
+ * @returns {string} YYYY-MM-DDTHH:mm:ss.sss
+ */
+function getLocalThaiISOString(d = new Date()) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const pad3 = (n) => String(n).padStart(3, '0');
+    const thaiDate = new Date(d.getTime() + (7 * 60 + d.getTimezoneOffset()) * 60 * 1000);
+    const year = thaiDate.getFullYear();
+    const month = pad(thaiDate.getMonth() + 1);
+    const day = pad(thaiDate.getDate());
+    const hours = pad(thaiDate.getHours());
+    const minutes = pad(thaiDate.getMinutes());
+    const seconds = pad(thaiDate.getSeconds());
+    const ms = pad3(thaiDate.getMilliseconds());
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}`;
+}
+
+/**
  * Extracts and normalizes public profile image URL from driver's regisimagepath.
  * @param {string|object|Array} regisimagepath
  * @returns {string|null} Full public image URL
@@ -143,6 +162,8 @@ class RequestService {
             requestfee,
             user_id,
             user_car_id,
+            reqdatetime,
+            reqDateTime,
         } = rawBody;
 
         if (!user_id || !user_car_id) {
@@ -205,6 +226,7 @@ class RequestService {
             reqdistance: parseFloat(reqdistance),
             requestfee: fee,
             requeststatus: 'กำลังค้นหาคนขับ',
+            reqdatetime: reqdatetime || reqDateTime || getLocalThaiISOString(),
             user_id: user_id,
             user_car_id: parseInt(user_car_id, 10),
         };
