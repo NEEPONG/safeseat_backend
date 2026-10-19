@@ -51,15 +51,28 @@ class AuthModel {
 
   // ตรวจสอบว่ามี username นี้อยู่ในระบบแล้วหรือยัง (ยกเว้นผู้ที่ถูกปฏิเสธ)
   static async checkDuplicateUsername(username) {
-    const { data, error } = await supabase
+    if (!username) return false;
+    const cleanUser = String(username).trim();
+
+    // 1. ตรวจสอบตาราง driver
+    const { data: driverData, error } = await supabase
       .from('driver')
       .select('username, registerstatus')
-      .eq('username', username)
+      .eq('username', cleanUser)
       .maybeSingle();
 
-    if (error || !data) return false;
-    if (data.registerstatus === 'ปฏิเสธ' || data.registerstatus === 'rejected') return false;
-    return true;
+    if (!error && driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true;
+
+    // 2. ตรวจสอบตาราง pub
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('username, regisstatus')
+      .eq('username', cleanUser)
+      .maybeSingle();
+
+    if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true;
+
+    return false;
   }
 
   // ดึงสถานะการสมัครสมาชิกของคนขับ
@@ -96,24 +109,71 @@ class AuthModel {
     return false;
   }
 
-  // Check if phone number already exists in driver or pub (excluding rejected)
+  // Check if phone number already exists in driver, pub, User, requestbypub, requestbyuser (excluding rejected)
   static async checkDuplicatePhone(phoneno) {
     if (!phoneno) return false;
-    const { data: driverData } = await supabase
-      .from('driver')
-      .select('phoneno, registerstatus')
-      .eq('phoneno', phoneno)
-      .maybeSingle();
+    const rawPhone = String(phoneno).trim();
+    const digitsOnly = rawPhone.replace(/\D/g, '');
+    if (!digitsOnly) return false;
 
-    if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true;
+    // 1. ตรวจสอบตาราง driver (phoneno)
+    try {
+      const { data: driverData } = await supabase
+        .from('driver')
+        .select('phoneno, registerstatus')
+        .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%`)
+        .limit(5);
 
-    const { data: pubData } = await supabase
-      .from('pub')
-      .select('pubphone, regisstatus')
-      .eq('pubphone', phoneno)
-      .maybeSingle();
+      if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) {
+        return true;
+      }
+    } catch (e) {}
 
-    if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true;
+    // 2. ตรวจสอบตาราง pub (pubphone)
+    try {
+      const { data: pubData } = await supabase
+        .from('pub')
+        .select('pubphone, regisstatus')
+        .or(`pubphone.eq.${rawPhone},pubphone.eq.${digitsOnly},pubphone.ilike.%${digitsOnly}%`)
+        .limit(5);
+
+      if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) {
+        return true;
+      }
+    } catch (e) {}
+
+    // 3. ตรวจสอบตาราง User (phoneno)
+    try {
+      const { data: userData } = await supabase
+        .from('User')
+        .select('phoneno')
+        .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%`)
+        .limit(5);
+
+      if (userData && userData.length > 0) return true;
+    } catch (e) {}
+
+    // 4. ตรวจสอบตาราง requestbypub (phoneno & phoneemer)
+    try {
+      const { data: reqPubData } = await supabase
+        .from('requestbypub')
+        .select('phoneno, phoneemer')
+        .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneemer.eq.${rawPhone},phoneemer.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%,phoneemer.ilike.%${digitsOnly}%`)
+        .limit(5);
+
+      if (reqPubData && reqPubData.length > 0) return true;
+    } catch (e) {}
+
+    // 5. ตรวจสอบตาราง requestbyuser (phoneno & phoneemer)
+    try {
+      const { data: reqUserData } = await supabase
+        .from('requestbyuser')
+        .select('phoneno, phoneemer')
+        .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneemer.eq.${rawPhone},phoneemer.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%,phoneemer.ilike.%${digitsOnly}%`)
+        .limit(5);
+
+      if (reqUserData && reqUserData.length > 0) return true;
+    } catch (e) {}
 
     return false;
   }

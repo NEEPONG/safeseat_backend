@@ -196,6 +196,75 @@ const formatPubDocs = (pub) => {
   return pub;
 };
 
+/**
+ * Deletes file(s) from Supabase Storage bucket.
+ * Accepts full URLs, compressed paths, or relative paths.
+ * @param {string|string[]} paths - Array of paths/URLs or single path/URL
+ * @param {string} bucketName - Name of the bucket (default 'images')
+ */
+const deleteFromSupabase = async (paths, bucketName = 'images') => {
+  if (!paths) return;
+  const pathsArray = Array.isArray(paths) ? paths : [paths];
+  const relativePaths = [];
+
+  for (const raw of pathsArray) {
+    if (!raw || typeof raw !== 'string') continue;
+    let p = raw.trim();
+    if (!p) continue;
+    
+    // Check if it's JSON string containing multiple paths
+    if (p.startsWith('[') || p.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(p);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item && typeof item === 'string') {
+              let rel = getRelativePath(getFullStorageUrl(item));
+              if (rel) {
+                if (rel.startsWith('images/')) rel = rel.substring(7);
+                if (rel.startsWith('/')) rel = rel.substring(1);
+                relativePaths.push(rel);
+              }
+            }
+          }
+          continue;
+        } else if (parsed && typeof parsed === 'object') {
+          for (const val of Object.values(parsed)) {
+            if (val && typeof val === 'string') {
+              let rel = getRelativePath(getFullStorageUrl(val));
+              if (rel) {
+                if (rel.startsWith('images/')) rel = rel.substring(7);
+                if (rel.startsWith('/')) rel = rel.substring(1);
+                relativePaths.push(rel);
+              }
+            }
+          }
+          continue;
+        }
+      } catch (e) {}
+    }
+
+    let rel = getRelativePath(getFullStorageUrl(p));
+    if (rel) {
+      if (rel.startsWith('images/')) rel = rel.substring(7);
+      if (rel.startsWith('/')) rel = rel.substring(1);
+      relativePaths.push(rel);
+    }
+  }
+
+  const uniquePaths = Array.from(new Set(relativePaths.filter(Boolean)));
+  if (uniquePaths.length > 0) {
+    try {
+      const { data, error } = await supabase.storage.from(bucketName).remove(uniquePaths);
+      if (error) {
+        console.warn('Warning: Failed to delete files from Supabase Storage:', error.message);
+      }
+    } catch (err) {
+      console.warn('Error deleting files from Supabase Storage:', err);
+    }
+  }
+};
+
 module.exports = {
   uploadToSupabase,
   getRelativePath,
@@ -203,6 +272,7 @@ module.exports = {
   formatDriverDocs,
   formatPubDocs,
   compressPath,
-  decompressPath
+  decompressPath,
+  deleteFromSupabase
 };
 

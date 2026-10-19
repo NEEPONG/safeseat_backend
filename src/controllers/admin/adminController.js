@@ -58,12 +58,7 @@ class AdminController {
         .select('*', { count: 'exact', head: true })
         .eq('registerstatus', 'อนุมัติแล้ว');
 
-      const { count: driverRejected } = await supabase
-        .from('driver')
-        .select('*', { count: 'exact', head: true })
-        .eq('registerstatus', 'ปฏิเสธ');
-
-      // 2. สถิติตุ๊กร้านค้า / สถานบันเทิง
+      // 2. สถิติสถานบันเทิง
       const { count: pubPending } = await supabase
         .from('pub')
         .select('*', { count: 'exact', head: true })
@@ -73,11 +68,6 @@ class AdminController {
         .from('pub')
         .select('*', { count: 'exact', head: true })
         .or('regisstatus.eq.อนุมัติแล้ว,regisstatus.eq.approved');
-
-      const { count: pubRejected } = await supabase
-        .from('pub')
-        .select('*', { count: 'exact', head: true })
-        .or('regisstatus.eq.ปฏิเสธ,regisstatus.eq.rejected');
 
       // 3. สถิติรายงานคนขับ
       const { count: driverReportPending } = await supabase
@@ -107,14 +97,12 @@ class AdminController {
           drivers: {
             pending: driverPending || 0,
             approved: driverApproved || 0,
-            rejected: driverRejected || 0,
-            total: (driverPending || 0) + (driverApproved || 0) + (driverRejected || 0)
+            total: (driverPending || 0) + (driverApproved || 0)
           },
           pubs: {
             pending: pubPending || 0,
             approved: pubApproved || 0,
-            rejected: pubRejected || 0,
-            total: (pubPending || 0) + (pubApproved || 0) + (pubRejected || 0)
+            total: (pubPending || 0) + (pubApproved || 0)
           },
           driverReports: {
             pending: driverReportPending || 0,
@@ -135,15 +123,36 @@ class AdminController {
   // GET /api/admin/drivers
   static async getDrivers(req, res) {
     try {
-      // ดึงรายชื่อคนขับพร้อมข้อมูลรถยนต์ (รวมทุกสถานะ)
+      const { formatDriverDocs, deleteFromSupabase } = require('../../utils/supabaseStorage');
+
+      // ลบข้อมูลคนขับที่ถูกปฏิเสธตกค้างออกจากระบบอัตโนมัติ (Cleanup)
+      const { data: rejectedDrivers } = await supabase
+        .from('driver')
+        .select('*, drivercar:driver_car(*)')
+        .in('registerstatus', ['ปฏิเสธ', 'rejected']);
+
+      if (rejectedDrivers && rejectedDrivers.length > 0) {
+        for (const drv of rejectedDrivers) {
+          const filesToDelete = [drv.regisimagepath];
+          if (drv.drivercar && Array.isArray(drv.drivercar)) {
+            drv.drivercar.forEach(c => filesToDelete.push(c.carimagepath));
+          }
+          await deleteFromSupabase(filesToDelete);
+          await supabase.from('driverskill').delete().eq('driver_id', drv.username);
+          await supabase.from('drivercar').delete().eq('driver_username', drv.username);
+          await supabase.from('driver').delete().eq('username', drv.username);
+        }
+      }
+
+      // ดึงรายชื่อคนขับพร้อมข้อมูลรถยนต์ (เฉพาะที่ยังไม่ถูกปฏิเสธ)
       const { data, error } = await supabase
         .from('driver')
         .select('*, drivercar:driver_car(*)')
+        .not('registerstatus', 'in', '("ปฏิเสธ","rejected")')
         .order('regisdate', { ascending: true });
 
       if (error) throw error;
 
-      const { formatDriverDocs } = require('../../utils/supabaseStorage');
       let formattedData = (data || []).map(driver => formatDriverDocs(driver));
 
       // เรียงลำดับ: สถานะรอดำเนินการขึ้นก่อน ตามด้วยลำดับวันที่สมัครก่อน (น้อยไปมาก)
@@ -170,15 +179,30 @@ class AdminController {
   // GET /api/admin/pubs
   static async getPubs(req, res) {
     try {
-      // ดึงรายชื่อสถานประกอบการ (รวมทุกสถานะ)
+      const { formatPubDocs, deleteFromSupabase } = require('../../utils/supabaseStorage');
+
+      // ลบข้อมูลสถานบันเทิงที่ถูกปฏิเสธตกค้างออกจากระบบอัตโนมัติ (Cleanup)
+      const { data: rejectedPubs } = await supabase
+        .from('pub')
+        .select('*')
+        .in('regisstatus', ['ปฏิเสธ', 'rejected']);
+
+      if (rejectedPubs && rejectedPubs.length > 0) {
+        for (const p of rejectedPubs) {
+          await deleteFromSupabase([p.regisimagepath, p.pubimagepath]);
+          await supabase.from('pub').delete().eq('username', p.username);
+        }
+      }
+
+      // ดึงรายชื่อสถานบันเทิง
       const { data, error } = await supabase
         .from('pub')
         .select('*')
+        .not('regisstatus', 'in', '("ปฏิเสธ","rejected")')
         .order('regisdate', { ascending: true });
 
       if (error) throw error;
 
-      const { formatPubDocs } = require('../../utils/supabaseStorage');
       let pubsData = (data || []).map(pub => formatPubDocs(pub));
 
       // เรียงลำดับ: สถานะรอดำเนินการ (pending) ขึ้นก่อน ตามด้วยลำดับวันที่สมัครก่อน
@@ -198,7 +222,7 @@ class AdminController {
       });
     } catch (err) {
       console.error("Admin fetch pubs error:", err);
-      return res.status(500).json({ error: 'ไม่สามารถดึงข้อมูลสถานประกอบการได้' });
+      return res.status(500).json({ error: 'ไม่สามารถดึงข้อมูลสถานบันเทิงได้' });
     }
   }
 
@@ -212,9 +236,33 @@ class AdminController {
         return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
       }
 
+      if (status === 'ปฏิเสธ' || status === 'rejected') {
+        const { data: driverData } = await supabase
+          .from('driver')
+          .select('*, drivercar:driver_car(*)')
+          .eq('username', username)
+          .maybeSingle();
+
+        if (driverData) {
+          const { deleteFromSupabase } = require('../../utils/supabaseStorage');
+          const filesToDelete = [driverData.regisimagepath];
+          if (driverData.drivercar && Array.isArray(driverData.drivercar)) {
+            driverData.drivercar.forEach(c => filesToDelete.push(c.carimagepath));
+          }
+          await deleteFromSupabase(filesToDelete);
+          await supabase.from('driverskill').delete().eq('driver_id', username);
+          await supabase.from('drivercar').delete().eq('driver_username', username);
+          await supabase.from('driver').delete().eq('username', username);
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: 'ปฏิเสธและลบข้อมูลคนขับออกจากระบบเรียบร้อยแล้ว'
+        });
+      }
+
       let thaiStatus = status;
       if (status === 'approved') thaiStatus = 'อนุมัติแล้ว';
-      if (status === 'rejected') thaiStatus = 'ปฏิเสธ';
       if (status === 'pending') thaiStatus = 'รอดำเนินการ';
 
       const { data, error } = await supabase
@@ -248,9 +296,27 @@ class AdminController {
         return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
       }
 
+      if (status === 'ปฏิเสธ' || status === 'rejected') {
+        const { data: pubData } = await supabase
+          .from('pub')
+          .select('*')
+          .eq('username', username)
+          .maybeSingle();
+
+        if (pubData) {
+          const { deleteFromSupabase } = require('../../utils/supabaseStorage');
+          await deleteFromSupabase([pubData.regisimagepath, pubData.pubimagepath]);
+          await supabase.from('pub').delete().eq('username', username);
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: 'ปฏิเสธและลบข้อมูลสถานบันเทิงออกจากระบบเรียบร้อยแล้ว'
+        });
+      }
+
       let thaiStatus = status;
       if (status === 'approved') thaiStatus = 'อนุมัติแล้ว';
-      if (status === 'rejected') thaiStatus = 'ปฏิเสธ';
       if (status === 'pending') thaiStatus = 'รอดำเนินการ';
 
       const { data, error } = await supabase
@@ -261,26 +327,33 @@ class AdminController {
         .maybeSingle();
 
       if (error) throw error;
-      if (!data) return res.status(404).json({ error: 'ไม่พบผู้ประกอบการร้านนี้' });
+      if (!data) return res.status(404).json({ error: 'ไม่พบสถานบันเทิงนี้' });
 
       return res.status(200).json({
         success: true,
-        message: `ปรับปรุงสถานะสถานประกอบการเป็น ${thaiStatus} สำเร็จ`,
+        message: `ปรับปรุงสถานะสถานบันเทิงเป็น ${thaiStatus} สำเร็จ`,
         data
       });
     } catch (err) {
       console.error("Admin update pub status error:", err);
-      return res.status(500).json({ error: 'ไม่สามารถอัปเดตสถานะสถานประกอบการได้' });
+      return res.status(500).json({ error: 'ไม่สามารถอัปเดตสถานะสถานบันเทิงได้' });
     }
   }
 
   // GET /api/admin/driver-reports
   static async getDriverReports(req, res) {
     try {
-      // ดึงรายงานเกี่ยวกับคนขับ (รวมทุกสถานะ)
+      // ลบข้อมูลรายงานคนขับที่ถูกปฏิเสธออกจาก Supabase อัตโนมัติ (Cleanup)
+      await supabase
+        .from('driverreport')
+        .delete()
+        .in('reportstatus', ['ปฏิเสธ', 'ไม่อนุมัติ', 'rejected']);
+
+      // ดึงรายงานเกี่ยวกับคนขับ (เฉพาะรายการที่ยังไม่ถูกปฏิเสธ)
       const { data, error } = await supabase
         .from('driverreport')
         .select('*')
+        .not('reportstatus', 'in', '("ปฏิเสธ","ไม่อนุมัติ","rejected")')
         .order('reportdate', { ascending: true });
 
       if (error) throw error;
@@ -323,10 +396,17 @@ class AdminController {
   // GET /api/admin/user-reports
   static async getUserReports(req, res) {
     try {
-      // ดึงรายงานเกี่ยวกับลูกค้า / ผู้ใช้ (รวมทุกสถานะ)
+      // ลบข้อมูลรายงานผู้ใช้ที่ถูกปฏิเสธออกจาก Supabase อัตโนมัติ (Cleanup)
+      await supabase
+        .from('userreport')
+        .delete()
+        .in('reportstatus', ['ปฏิเสธ', 'ไม่อนุมัติ', 'rejected']);
+
+      // ดึงรายงานเกี่ยวกับลูกค้า / ผู้ใช้ (เฉพาะรายการที่ยังไม่ถูกปฏิเสธ)
       const { data, error } = await supabase
         .from('userreport')
         .select('*')
+        .not('reportstatus', 'in', '("ปฏิเสธ","ไม่อนุมัติ","rejected")')
         .order('reportdate', { ascending: true });
 
       if (error) throw error;
