@@ -61,17 +61,17 @@ const requestDriver = async (req, res) => {
       return res.status(400).json({ success: false, message: 'เบอร์โทรศัพท์ของลูกค้าและเบอร์โทรฉุกเฉินต้องห้ามซ้ำกัน' })
     }
 
-    // 2. ดึงพิกัดจุดรับ (pickup) จากร้านค้า
+    // 2. ดึงพิกัดจุดรับ (pickup) จากสถานบันเทิง
     const pubData = await pubModel.findByUsername(pubUsername)
     if (!pubData) {
-      return res.status(404).json({ success: false, message: 'ไม่พบข้อมูลร้านค้า' })
+      return res.status(404).json({ success: false, message: 'ไม่พบข้อมูลสถานบันเทิง' })
     }
 
     const pickupLatitude = pubData.pubaddresslat || pubData.pubAddressLat
     const pickupLongitude = pubData.pubaddresslng || pubData.pubAddressLng
 
     if (!pickupLatitude || !pickupLongitude) {
-      return res.status(400).json({ success: false, message: 'ร้านค้ายังไม่มีการตั้งค่าพิกัดจุดรับ กรุณาตั้งค่า Profile ร้านก่อน' })
+      return res.status(400).json({ success: false, message: 'สถานบันเทิงยังไม่มีการตั้งค่าพิกัดจุดรับ กรุณาตั้งค่า Profile สถานบันเทิงก่อน' })
     }
 
     // แปลงประเภทรถเป็น integer ID ของตาราง cartype (1 = EV/Electric, 2 = Manual, 3 = Auto/Autometric)

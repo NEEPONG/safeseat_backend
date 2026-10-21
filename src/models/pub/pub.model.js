@@ -103,13 +103,63 @@ const checkDuplicateEmailCrossTable = async (email) => {
   return false
 }
 
-// ── Query: ตรวจสอบเบอร์โทรซ้ำข้ามตาราง (pub & driver) ───────────────────
+// ── Query: ตรวจสอบเบอร์โทรซ้ำข้ามตาราง (pub, driver, User, requestbypub, requestbyuser) ───────────────────
 const checkDuplicatePhoneCrossTable = async (phone) => {
   if (!phone) return false
-  const { data: pubData } = await supabase.from('pub').select('pubphone, regisstatus').eq('pubphone', phone).maybeSingle()
-  if (pubData && pubData.regisstatus !== 'ปฏิเสธ' && pubData.regisstatus !== 'rejected') return true
-  const { data: driverData } = await supabase.from('driver').select('phoneno, registerstatus').eq('phoneno', phone).maybeSingle()
-  if (driverData && driverData.registerstatus !== 'ปฏิเสธ' && driverData.registerstatus !== 'rejected') return true
+  const rawPhone = String(phone).trim()
+  const digitsOnly = rawPhone.replace(/\D/g, '')
+  if (!digitsOnly) return false
+
+  // 1. ตรวจสอบตาราง pub (pubphone)
+  try {
+    const { data: pubData } = await supabase
+      .from('pub')
+      .select('pubphone, regisstatus')
+      .or(`pubphone.eq.${rawPhone},pubphone.eq.${digitsOnly},pubphone.ilike.%${digitsOnly}%`)
+      .limit(5)
+    if (pubData && pubData.some(p => p.regisstatus !== 'ปฏิเสธ' && p.regisstatus !== 'rejected')) return true
+  } catch (e) {}
+
+  // 2. ตรวจสอบตาราง driver (phoneno)
+  try {
+    const { data: driverData } = await supabase
+      .from('driver')
+      .select('phoneno, registerstatus')
+      .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%`)
+      .limit(5)
+    if (driverData && driverData.some(d => d.registerstatus !== 'ปฏิเสธ' && d.registerstatus !== 'rejected')) return true
+  } catch (e) {}
+
+  // 3. ตรวจสอบตาราง User (phoneno)
+  try {
+    const { data: userData } = await supabase
+      .from('User')
+      .select('phoneno')
+      .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%`)
+      .limit(5)
+    if (userData && userData.length > 0) return true
+  } catch (e) {}
+
+  // 4. ตรวจสอบตาราง requestbypub (phoneno, phoneemer)
+  try {
+    const { data: reqPubData } = await supabase
+      .from('requestbypub')
+      .select('phoneno, phoneemer')
+      .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneemer.eq.${rawPhone},phoneemer.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%,phoneemer.ilike.%${digitsOnly}%`)
+      .limit(5)
+    if (reqPubData && reqPubData.length > 0) return true
+  } catch (e) {}
+
+  // 5. ตรวจสอบตาราง requestbyuser (phoneno, phoneemer)
+  try {
+    const { data: reqUserData } = await supabase
+      .from('requestbyuser')
+      .select('phoneno, phoneemer')
+      .or(`phoneno.eq.${rawPhone},phoneno.eq.${digitsOnly},phoneemer.eq.${rawPhone},phoneemer.eq.${digitsOnly},phoneno.ilike.%${digitsOnly}%,phoneemer.ilike.%${digitsOnly}%`)
+      .limit(5)
+    if (reqUserData && reqUserData.length > 0) return true
+  } catch (e) {}
+
   return false
 }
 
